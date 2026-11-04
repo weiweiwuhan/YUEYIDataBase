@@ -19,7 +19,7 @@ with tempfile.TemporaryDirectory() as tmp:
         for _ in range(100):
             try:s=req('/api/state');break
             except Exception:time.sleep(.05)
-        assert len(s['schema'])==22 and all(not x for x in s['data'].values())
+        assert len(s['schema'])==23 and all(not x for x in s['data'].values())
         def denied(path,data=None,raw=None):
             try:req(path,data,raw);assert False,'Expected forbidden '+path
             except urllib.error.HTTPError as e:assert e.code==403
@@ -35,6 +35,13 @@ with tempfile.TemporaryDirectory() as tmp:
         req('/api/save',{'table':'products','id':1,'record':{**s['data']['products'][0],'remark':'后来补充'}})
         assert req('/api/state')['data']['products'][0]['remark']=='后来补充'
         agreement=req('/api/save',{'table':'technical_agreements','record':{'project_id':1,'code':'TA-1','name':'技术协议','requirements':'要求'*400}})['id']
+        attachment=req('/api/upload?kind=agreement&agreement_id='+str(agreement)+'&name=spec.pdf',raw=b'%PDF-test-bytes')['asset_id']
+        assert opener.open('http://127.0.0.1:18765/api/media?id='+str(attachment)+'&mode=original').read()==b'%PDF-test-bytes'
+        assert any(f['asset_id']==attachment for f in req('/api/state')['data']['agreement_files'])
+        previous_files=set(Path(tmp,'uploads').iterdir())
+        try:req('/api/upload?kind=agreement&agreement_id=999999&name=bad.pdf',raw=b'bad');assert False
+        except urllib.error.HTTPError:pass
+        assert previous_files==set(Path(tmp,'uploads').iterdir())
         second=req('/api/save',{'table':'products','record':{'name':'协议第二产品'}})['id']
         for product in (1,second):req('/api/save',{'table':'agreement_products','record':{'agreement_id':agreement,'product_id':product}})
         req('/api/save',{'table':'after_sales','record':{'project_id':1,'product_id':1,'name':'售后经验','status':'已解决','experience':'预防措施'}})
@@ -77,6 +84,18 @@ with tempfile.TemporaryDirectory() as tmp:
         estate=req('/api/upload?name=precise.proj&kind=engineering&version=v2',raw=b'engineering version 2')
         current=req('/api/state')['data']
         im=next(x for x in current['images'] if x['asset_id']==imageupload['asset_id'])
+        before_asset=next(a for a in current['assets'] if a['id']==im['asset_id'])
+        oldpath=Path(tmp,'uploads',before_asset['relative_path']);original_bytes=oldpath.read_bytes()
+        req('/api/rename-image',{'image_id':im['id'],'name':'renamed-image.png'})
+        after_asset=next(a for a in req('/api/state')['data']['assets'] if a['id']==im['asset_id'])
+        assert after_asset['file_name']=='renamed-image.png' and not oldpath.exists()
+        assert Path(tmp,'uploads',after_asset['relative_path']).read_bytes()==original_bytes
+        for badname in ('../escape.png','bad.jpg','CON.png'):
+            try:req('/api/rename-image',{'image_id':im['id'],'name':badname});assert False
+            except urllib.error.HTTPError:pass
+        req('/api/auth/logout',{})
+        denied('/api/rename-image',{'image_id':im['id'],'name':'blocked.png'})
+        req('/api/auth/login',{'username':'admin','password':'test-admin-password'})
         en=next(x for x in current['engineering_projects'] if x['asset_id']==estate['asset_id'])
         assert im['width']==640 and im['height']==480 and im['channels']==3
         req('/api/bind',{'image_id':im['id'],'engineering_id':en['id']})
@@ -122,7 +141,7 @@ with tempfile.TemporaryDirectory() as tmp:
         # Full JSON round trip on existing records.
         assert req('/api/import',{'data':old})['count']==sum(map(len,old.values()))
         sql=opener.open('http://127.0.0.1:18765/api/sql?data=1').read().decode()
-        assert sql.count('CREATE TABLE IF NOT EXISTS')==22 and 'START TRANSACTION;' in sql
+        assert sql.count('CREATE TABLE IF NOT EXISTS')==23 and 'START TRANSACTION;' in sql
         assert 'CONVERT(X\'' in sql and 'FOREIGN KEY' in sql
         accounts=req('/api/auth/users')
         editor_id=next(u['id'] for u in accounts if u['username']=='editor')
@@ -135,5 +154,5 @@ with tempfile.TemporaryDirectory() as tmp:
             except Exception:time.sleep(.05)
         assert after==old
         db=sqlite3.connect(Path(tmp)/'aoi.db');assert db.execute('PRAGMA integrity_check').fetchone()[0]=='ok';assert not db.execute('PRAGMA foreign_key_check').fetchall()
-        print('PASS: authentication, guest/editor/admin permissions, agreements, after-sales, 22 tables, seed, CRUD, FK protection, category cycle, transaction rollback, ZIP registration, upload rollback, JSON round trip, SQL export, restart persistence, DB integrity, real image upload, thumbnail, full-resolution preview, engineering binding/download/unbind, invalid-image rollback.')
+        print('PASS: authentication, guest/editor/admin permissions, agreements, after-sales, 23 tables, seed, CRUD, FK protection, category cycle, transaction rollback, ZIP registration, upload rollback, JSON round trip, SQL export, restart persistence, DB integrity, real image upload, thumbnail, full-resolution preview, engineering binding/download/unbind, invalid-image rollback.')
     finally:p.terminate();p.wait()

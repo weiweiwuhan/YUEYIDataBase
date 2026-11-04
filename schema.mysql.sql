@@ -1,4 +1,4 @@
--- AOI Industrial Asset Catalog | 22 tables
+-- AOI Industrial Asset Catalog | 23 tables
 
 -- Non-destructive DDL: existing tables are preserved.
 
@@ -248,4 +248,13 @@ CREATE TABLE IF NOT EXISTS `after_sales` (
   FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CHECK (`status` IN ('待处理', '处理中', '已解决'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `agreement_files` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `agreement_id` BIGINT NOT NULL,
+  `asset_id` BIGINT NOT NULL,
+  FOREIGN KEY (`agreement_id`) REFERENCES `technical_agreements` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  FOREIGN KEY (`asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  UNIQUE (`asset_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

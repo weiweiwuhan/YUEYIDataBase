@@ -110,6 +110,13 @@ def local_asset(c,aid):
     if not path.is_relative_to(UPLOADS.resolve()) or not path.is_file():raise ValueError('本地文件不存在，请重新上传')
     return dict(a),path
 
+def safe_filename(name):
+    name=str(name).strip()
+    if not name or len(name)>191 or name in ('.','..') or name.endswith(('.', ' ')) or any(ord(ch)<32 or ch in '<>:"/\\|?*' for ch in name):
+        raise ValueError('文件名不合法，请勿包含路径或特殊字符')
+    if name.split('.')[0].upper() in {'CON','PRN','AUX','NUL',*[f'COM{i}' for i in range(1,10)],*[f'LPT{i}' for i in range(1,10)]}:raise ValueError('文件名为系统保留名称')
+    return name
+
 def image_info(path):
     from PIL import Image
     with Image.open(path) as im:
@@ -199,7 +206,7 @@ class Handler(BaseHTTPRequestHandler):
         if origin and origin not in ('http://'+self.headers.get('Host',''),'https://'+self.headers.get('Host','')):
             self.reply({'error':'跨来源写入已拒绝'},403);return
         if self.headers.get('X-AOI-Client')!='local-v1':self.reply({'error':'缺少本地客户端标识'},403);return
-        c=None;created=[]
+        c=None;created=[];renamed=[]
         try:
             n=int(self.headers.get('Content-Length','0'))
             if n>1024*1024*1024:raise ValueError('单次上传上限 1 GB')
@@ -215,8 +222,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
             self.require(c,p.path in ('/api/delete','/api/import','/api/seed'))
             if p.path=='/api/upload':
-                q=parse_qs(p.query);name=q.get('name',['upload.bin'])[0].replace('\\','/').split('/')[-1]
-                if not name or len(name)>191:raise ValueError('文件名不合法')
+                q=parse_qs(p.query);name=safe_filename(q.get('name',['upload.bin'])[0])
                 dest=UPLOADS/(uuid.uuid4().hex+'_'+name);h=hashlib.sha256();remain=n
                 with dest.open('wb') as out:
                     created.append(dest)
@@ -233,10 +239,14 @@ class Handler(BaseHTTPRequestHandler):
                 lid=loc['id'] if loc else save(c,'storage_locations',dict(name='本地上传',root_path=str(UPLOADS)))
                 ext=dest.suffix.lower();kind='image' if ext in ('.png','.bmp','.jpg','.jpeg','.tif','.tiff','.webp') else 'archive' if ext=='.zip' else 'other'
                 engineering=q.get('kind',[''])[0]=='engineering'
+                agreement=q.get('kind')==['agreement']
+                if agreement:kind='document'
                 if engineering:kind='engineering'
                 if q.get('image_only')==['1'] and kind!='image':raise ValueError('请选择图片文件')
                 info=image_info(dest) if kind=='image' else {}
                 aid=save(c,'assets',dict(asset_type=kind,file_name=name,storage_location_id=lid,relative_path=dest.name,storage_mode='file',file_size=n,sha256=h.hexdigest(),status='available'))
+                if agreement:
+                    save(c,'agreement_files',dict(agreement_id=int(q.get('agreement_id',['0'])[0]),asset_id=aid))
                 pid=int(q.get('project_id',['0'])[0]);prod=int(q.get('product_id',['0'])[0])
                 def links(a):
                     if pid:save(c,'project_assets',dict(project_id=pid,asset_id=a))
@@ -267,7 +277,16 @@ class Handler(BaseHTTPRequestHandler):
                 c.commit();self.reply(dict(ok=True,asset_id=aid,members=count));return
             payload=json.loads(self.rfile.read(n) or b'{}')
             if p.path=='/api/bind' and payload.get('remove'):self.require(c,True)
-            if p.path=='/api/local-engineering':
+            if p.path=='/api/rename-image':
+                image=execute(c,'SELECT asset_id FROM images WHERE id=?',(int(payload['image_id']),)).fetchone()
+                if not image:raise ValueError('图片不存在')
+                a,path=local_asset(c,image['asset_id']);name=safe_filename(payload['name'])
+                if Path(name).suffix.lower()!=path.suffix.lower():raise ValueError('重命名时请保留原图片扩展名')
+                dest=UPLOADS/(uuid.uuid4().hex+'_'+name)
+                path.rename(dest);renamed.append((path,dest))
+                execute(c,'UPDATE assets SET file_name=?,relative_path=? WHERE id=?',(name,dest.name,a['id']))
+                result=dict(ok=True,name=name)
+            elif p.path=='/api/local-engineering':
                 path=str(payload.get('local_path','')).strip().strip('"')
                 import ntpath
                 if not (ntpath.isabs(path) or Path(path).is_absolute()) or len(path)>1024:raise ValueError('请填写完整本地路径，例如 D:\\AOI\\项目工程')
@@ -325,6 +344,7 @@ class Handler(BaseHTTPRequestHandler):
             c.commit();self.reply(result)
         except Exception as e:
             if c:c.rollback()
+            for old,new in reversed(renamed):new.rename(old)
             for f in created:f.unlink(missing_ok=True)
             self.reply({'error':str(e)},403 if isinstance(e,PermissionError) else 400)
         finally:
