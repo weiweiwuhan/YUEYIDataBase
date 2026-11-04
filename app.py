@@ -226,6 +226,9 @@ class Handler(BaseHTTPRequestHandler):
             self.require(c,p.path in ('/api/delete','/api/import','/api/seed'))
             if p.path=='/api/upload':
                 q=parse_qs(p.query);name=safe_filename(q.get('name',['upload.bin'])[0])
+                if q.get('kind')==['agreement']:
+                    if n>256*1024*1024:raise ValueError('协议附件单文件最多 256 MB')
+                    if not execute(c,'SELECT id FROM technical_agreements WHERE id=?',(int(q.get('agreement_id',['0'])[0]),)).fetchone():raise ValueError('请先保存并选择技术协议，再上传附件')
                 dest=UPLOADS/(uuid.uuid4().hex+'_'+name);h=hashlib.sha256();remain=n
                 with dest.open('wb') as out:
                     created.append(dest)
@@ -280,17 +283,21 @@ class Handler(BaseHTTPRequestHandler):
                 c.commit();self.reply(dict(ok=True,asset_id=aid,members=count));return
             payload=json.loads(self.rfile.read(n) or b'{}')
             if p.path=='/api/bind' and payload.get('remove'):self.require(c,True)
-            if p.path=='/api/agreement-text':
-                row=execute(c,'SELECT asset_id FROM agreement_files WHERE id=?',(int(payload['file_id']),)).fetchone()
-                if not row:raise ValueError('协议附件不存在')
-                _,path=local_asset(c,row['asset_id'])
-                from agreement_text import extract
-                result=extract(path)
-            elif p.path=='/api/agreement-reading':
-                aid=int(payload['agreement_id']);text=str(payload['text'])
-                if len(text)>100000:raise ValueError('读取内容最多 100000 字符')
-                if not execute(c,'SELECT id FROM technical_agreements WHERE id=?',(aid,)).fetchone():raise ValueError('技术协议不存在')
-                execute(c,'UPDATE technical_agreements SET extracted_text=? WHERE id=?',(text,aid));result=dict(ok=True)
+            if p.path=='/api/image-defects':
+                image_ids=set(map(int,payload.get('image_ids',[])));defect_ids=set(map(int,payload.get('defect_ids',[])))
+                if not image_ids or not defect_ids:raise ValueError('请至少选择一张图片及一种缺陷')
+                if len(image_ids)*len(defect_ids)>10000:raise ValueError('单次最多绑定 10000 条关系')
+                # Validate the whole selection before writing; failures roll back every binding.
+                for iid in image_ids:
+                    if not execute(c,'SELECT id FROM images WHERE id=?',(iid,)).fetchone():raise ValueError('图片不存在')
+                for did in defect_ids:
+                    if not execute(c,'SELECT id FROM defect_types WHERE id=?',(did,)).fetchone():raise ValueError('缺陷类型不存在')
+                count=0
+                for iid in image_ids:
+                    for did in defect_ids:
+                        if not execute(c,'SELECT id FROM image_defects WHERE image_id=? AND defect_type_id=?',(iid,did)).fetchone():
+                            save(c,'image_defects',dict(image_id=iid,defect_type_id=did,remark=payload.get('remark')));count+=1
+                result=dict(ok=True,count=count)
             elif p.path=='/api/rename-image':
                 image=execute(c,'SELECT asset_id FROM images WHERE id=?',(int(payload['image_id']),)).fetchone()
                 if not image:raise ValueError('图片不存在')

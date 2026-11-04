@@ -25,3 +25,7 @@ assert(el('#results').innerHTML.includes('data-searchvideo="1"'));
 assert(el('#results').innerHTML.includes('data-searchimage='));
 assert(el('#searchcount').textContent.includes('张图片'));
 console.log('PASS: image-only results, engineering/video keyword search, confirmed-image defect filter, linked video actions, thumbnail cards, image counts, no resource type filter');
+
+const expected=[...sample.images].sort((a,b)=>Number(sample.image_defects.some(d=>d.image_id===a.id))-Number(sample.image_defects.some(d=>d.image_id===b.id))||b.id-a.id).map(i=>i.id);
+assert.deepEqual(Array.from(run('matchingImageResults({}).map(r=>r.i.id)')),expected);
+console.log('PASS: unassigned-defect images first, newest ID first within each group');

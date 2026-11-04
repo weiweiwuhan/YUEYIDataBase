@@ -40,10 +40,6 @@ with tempfile.TemporaryDirectory() as tmp:
         assert any(f['asset_id']==attachment for f in req('/api/state')['data']['agreement_files'])
         textfile=req('/api/upload?kind=agreement&agreement_id='+str(agreement)+'&name=agreement.txt',raw='技术协议编号：TA-1\n检测精度：0.01mm'.encode())['asset_id']
         file_id=next(f['id'] for f in req('/api/state')['data']['agreement_files'] if f['asset_id']==textfile)
-        extracted=req('/api/agreement-text',{'file_id':file_id})
-        assert '检测精度' in extracted['text']
-        req('/api/agreement-reading',{'agreement_id':agreement,'text':extracted['text']})
-        assert next(a for a in req('/api/state')['data']['technical_agreements'] if a['id']==agreement)['extracted_text']==extracted['text']
         previous_files=set(Path(tmp,'uploads').iterdir())
         try:req('/api/upload?kind=agreement&agreement_id=999999&name=bad.pdf',raw=b'bad');assert False
         except urllib.error.HTTPError:pass
@@ -103,6 +99,21 @@ with tempfile.TemporaryDirectory() as tmp:
         denied('/api/rename-image',{'image_id':im['id'],'name':'blocked.png'})
         req('/api/auth/login',{'username':'admin','password':'test-admin-password'})
         en=next(x for x in current['engineering_projects'] if x['asset_id']==estate['asset_id'])
+        bind_payload={'image_ids':[im['id']],'defect_ids':[1,2,3],'remark':'多缺陷确认'}
+        assert req('/api/image-defects',bind_payload)['count']==3
+        assert req('/api/image-defects',bind_payload)['count']==0
+        multi={'image_ids':[1,im['id']],'defect_ids':[2,3]}
+        req('/api/image-defects',multi)
+        assert req('/api/image-defects',multi)['count']==0
+        bindings=req('/api/state')['data']['image_defects']
+        assert all(any(r['image_id']==iid and r['defect_type_id']==did for r in bindings) for iid in multi['image_ids'] for did in multi['defect_ids'])
+        before_bind=req('/api/state')['data']['image_defects']
+        try:req('/api/image-defects',{'image_ids':[im['id'],999999],'defect_ids':[1]});assert False
+        except urllib.error.HTTPError:pass
+        assert req('/api/state')['data']['image_defects']==before_bind
+        req('/api/auth/logout',{})
+        denied('/api/image-defects',bind_payload)
+        req('/api/auth/login',{'username':'admin','password':'test-admin-password'})
         assert im['width']==640 and im['height']==480 and im['channels']==3
         req('/api/bind',{'image_id':im['id'],'engineering_id':en['id']})
         req('/api/bind',{'image_id':im['id'],'engineering_id':en['id']})
