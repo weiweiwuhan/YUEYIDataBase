@@ -219,6 +219,7 @@ CREATE TABLE IF NOT EXISTS `technical_agreements` (
   `name` VARCHAR(191) NOT NULL,
   `signed_date` VARCHAR(191),
   `requirements` VARCHAR(1024),
+  `extracted_text` LONGTEXT,
   `remark` VARCHAR(1024),
   FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   UNIQUE (`code`)

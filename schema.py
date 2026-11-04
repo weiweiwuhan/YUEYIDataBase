@@ -24,7 +24,7 @@ add('asset_defects','资料包—缺陷','关系','表示包级包含这些缺�
 add('asset_relations','资源关联','关系','contains: 压缩包→成员；paired: 工程→图片；annotation: 图片→标注；version: 旧→新。',[col('source_asset_id','来源资源','int',True,'assets'),col('target_asset_id','目标资源','int',True,'assets'),col('relation_type','关系类型',required=True,choices=['contains','paired','annotation','version']),col('member_path','压缩包内路径')],unique=[['source_asset_id','target_asset_id','relation_type']])
 add('image_embeddings','图像特征登记','扩展','预留向量索引登记；本版本不生成特征、不提供以图搜图。',[col('image_id','图片','int',True,'images'),col('model_name','模型',required=True),col('model_version','模型版本',required=True),col('dimension','特征维度','int',True),col('vector_key','向量索引键',required=True)],unique=[['image_id','model_name','model_version'],['vector_key']])
 add('videos','视频资料','主表','视频上传到本机，每条视频绑定一张产品图片；一张图片可绑定多个视频。',[col('image_id','绑定产品图片','int',True,'images'),col('name','视频名称',required=True),col('file_name','原文件名',required=True),col('relative_path','视频存储路径',required=True),col('file_size','大小 bytes','int'),col('remark','备注')])
-add('technical_agreements','技术协议','主表','每份协议属于一个项目；通过协议—产品关联多个产品。',[col('project_id','项目','int',True,'projects'),col('code','协议编号',required=True),col('name','协议名称',required=True),col('signed_date','签订日期'),col('requirements','技术要求'),col('remark','备注')],unique=[['code']])
+add('technical_agreements','技术协议','主表','每份协议属于一个项目；通过协议—产品关联多个产品。',[col('project_id','项目','int',True,'projects'),col('code','协议编号',required=True),col('name','协议名称',required=True),col('signed_date','签订日期'),col('requirements','技术要求'),col('extracted_text','技术协议信息读取'),col('remark','备注')],unique=[['code']])
 add('agreement_products','协议—产品','关系','同一份技术协议可以对应多个产品。',[col('agreement_id','技术协议','int',True,'technical_agreements'),col('product_id','产品','int',True,'products')],unique=[['agreement_id','product_id']])
 add('after_sales','售后经验','主表','绑定项目与产品，积累故障原因、处理过程及预防经验。',[col('project_id','项目','int',True,'projects'),col('product_id','产品','int',True,'products'),col('name','问题标题',required=True),col('service_date','售后日期'),col('status','处理状态',required=True,choices=['待处理','处理中','已解决']),col('symptom','问题现象'),col('cause','原因分析'),col('resolution','处理方案'),col('experience','经验与预防措施'),col('remark','备注')])
 add('agreement_files','技术协议附件','关系','协议附件原文件保存在工程数据目录，可下载。',[col('agreement_id','技术协议','int',True,'technical_agreements'),col('asset_id','附件资源','int',True,'assets')],unique=[['asset_id']])
@@ -40,6 +40,7 @@ def ddl(mysql=False):
             else:
                 s=({'int':'BIGINT','real':'DOUBLE'}.get(k,'VARCHAR(1024)' if n in ('requirements','symptom','cause','resolution','experience','remark','relative_path','member_path','root_path','thumbnail_path','local_path') else 'VARCHAR(191)') if mysql else {'int':'INTEGER','real':'REAL'}.get(k,'TEXT'))
                 if c['required']:s+=' NOT NULL'
+            if n=='extracted_text':s='LONGTEXT' if mysql else 'TEXT'
             lines.append(f'  `{n}` {s}')
             if c['choices']:constraints.append('  CHECK (`'+n+'` IN ('+', '.join("'"+x+"'" for x in c['choices'])+'))')
             if c['ref']:constraints.append(f'  FOREIGN KEY (`{n}`) REFERENCES `{c["ref"]}` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT')

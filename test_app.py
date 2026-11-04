@@ -38,6 +38,12 @@ with tempfile.TemporaryDirectory() as tmp:
         attachment=req('/api/upload?kind=agreement&agreement_id='+str(agreement)+'&name=spec.pdf',raw=b'%PDF-test-bytes')['asset_id']
         assert opener.open('http://127.0.0.1:18765/api/media?id='+str(attachment)+'&mode=original').read()==b'%PDF-test-bytes'
         assert any(f['asset_id']==attachment for f in req('/api/state')['data']['agreement_files'])
+        textfile=req('/api/upload?kind=agreement&agreement_id='+str(agreement)+'&name=agreement.txt',raw='技术协议编号：TA-1\n检测精度：0.01mm'.encode())['asset_id']
+        file_id=next(f['id'] for f in req('/api/state')['data']['agreement_files'] if f['asset_id']==textfile)
+        extracted=req('/api/agreement-text',{'file_id':file_id})
+        assert '检测精度' in extracted['text']
+        req('/api/agreement-reading',{'agreement_id':agreement,'text':extracted['text']})
+        assert next(a for a in req('/api/state')['data']['technical_agreements'] if a['id']==agreement)['extracted_text']==extracted['text']
         previous_files=set(Path(tmp,'uploads').iterdir())
         try:req('/api/upload?kind=agreement&agreement_id=999999&name=bad.pdf',raw=b'bad');assert False
         except urllib.error.HTTPError:pass
@@ -86,7 +92,7 @@ with tempfile.TemporaryDirectory() as tmp:
         im=next(x for x in current['images'] if x['asset_id']==imageupload['asset_id'])
         before_asset=next(a for a in current['assets'] if a['id']==im['asset_id'])
         oldpath=Path(tmp,'uploads',before_asset['relative_path']);original_bytes=oldpath.read_bytes()
-        req('/api/rename-image',{'image_id':im['id'],'name':'renamed-image.png'})
+        req('/api/rename-image',{'image_id':im['id'],'stem':'renamed-image'})
         after_asset=next(a for a in req('/api/state')['data']['assets'] if a['id']==im['asset_id'])
         assert after_asset['file_name']=='renamed-image.png' and not oldpath.exists()
         assert Path(tmp,'uploads',after_asset['relative_path']).read_bytes()==original_bytes

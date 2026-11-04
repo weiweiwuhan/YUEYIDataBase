@@ -41,6 +41,7 @@ def validate(c,t,r,exclude=None):
                 if not math.isfinite(v) or v<0:raise ValueError(f['label']+'须为非负有限数值')
             else:
                 v=str(v);maxlen=1024 if n in ('requirements','symptom','cause','resolution','experience','remark','relative_path','member_path','root_path','thumbnail_path','local_path') else 191
+                if n=='extracted_text':maxlen=100000
                 if len(v)>maxlen:raise ValueError(f['label']+'内容过长')
             if f['choices'] and v not in f['choices']:raise ValueError(f['label']+'选项不合法')
         out[n]=v
@@ -88,6 +89,8 @@ def initialize():
             execute(c,s)
         fields=[x['Field'] for x in execute(c,'SHOW COLUMNS FROM engineering_projects').fetchall()] if MYSQL else [x['name'] for x in execute(c,'PRAGMA table_info(engineering_projects)').fetchall()]
         if 'local_path' not in fields:execute(c,'ALTER TABLE engineering_projects ADD COLUMN local_path '+('VARCHAR(1024)' if MYSQL else 'TEXT'))
+        agreement_fields=[x['Field'] for x in execute(c,'SHOW COLUMNS FROM technical_agreements').fetchall()] if MYSQL else [x['name'] for x in execute(c,'PRAGMA table_info(technical_agreements)').fetchall()]
+        if 'extracted_text' not in agreement_fields:execute(c,'ALTER TABLE technical_agreements ADD COLUMN extracted_text '+('LONGTEXT' if MYSQL else 'TEXT'))
         import auth
         auth.initialize(c,execute,MYSQL)
         c.commit()
@@ -277,10 +280,22 @@ class Handler(BaseHTTPRequestHandler):
                 c.commit();self.reply(dict(ok=True,asset_id=aid,members=count));return
             payload=json.loads(self.rfile.read(n) or b'{}')
             if p.path=='/api/bind' and payload.get('remove'):self.require(c,True)
-            if p.path=='/api/rename-image':
+            if p.path=='/api/agreement-text':
+                row=execute(c,'SELECT asset_id FROM agreement_files WHERE id=?',(int(payload['file_id']),)).fetchone()
+                if not row:raise ValueError('协议附件不存在')
+                _,path=local_asset(c,row['asset_id'])
+                from agreement_text import extract
+                result=extract(path)
+            elif p.path=='/api/agreement-reading':
+                aid=int(payload['agreement_id']);text=str(payload['text'])
+                if len(text)>100000:raise ValueError('读取内容最多 100000 字符')
+                if not execute(c,'SELECT id FROM technical_agreements WHERE id=?',(aid,)).fetchone():raise ValueError('技术协议不存在')
+                execute(c,'UPDATE technical_agreements SET extracted_text=? WHERE id=?',(text,aid));result=dict(ok=True)
+            elif p.path=='/api/rename-image':
                 image=execute(c,'SELECT asset_id FROM images WHERE id=?',(int(payload['image_id']),)).fetchone()
                 if not image:raise ValueError('图片不存在')
-                a,path=local_asset(c,image['asset_id']);name=safe_filename(payload['name'])
+                a,path=local_asset(c,image['asset_id']);name=safe_filename(payload.get('stem',payload.get('name','')))
+                if 'stem' in payload:name=safe_filename(name+path.suffix)
                 if Path(name).suffix.lower()!=path.suffix.lower():raise ValueError('重命名时请保留原图片扩展名')
                 dest=UPLOADS/(uuid.uuid4().hex+'_'+name)
                 path.rename(dest);renamed.append((path,dest))
