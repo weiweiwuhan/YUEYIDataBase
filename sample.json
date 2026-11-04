@@ -1,0 +1,280 @@
+{
+  "storage_locations": [
+    {
+      "id": 1,
+      "name": "NAS 示例（请修改）",
+      "root_path": "\\\\NAS\\工业资料"
+    }
+  ],
+  "product_categories": [
+    {
+      "id": 1,
+      "name": "螺栓"
+    },
+    {
+      "id": 2,
+      "name": "外六角螺栓",
+      "parent_id": 1
+    }
+  ],
+  "materials": [
+    {
+      "id": 1,
+      "name": "不锈钢",
+      "remark": "字典示例，不代表本项目材质"
+    }
+  ],
+  "process_types": [
+    {
+      "id": 1,
+      "name": "镀锌"
+    },
+    {
+      "id": 2,
+      "name": "滚丝"
+    }
+  ],
+  "defect_types": [
+    {
+      "id": 1,
+      "name": "裂纹"
+    },
+    {
+      "id": 2,
+      "name": "牙伤"
+    },
+    {
+      "id": 3,
+      "name": "牙底积液"
+    }
+  ],
+  "projects": [
+    {
+      "id": 1,
+      "code": "DEMO-JJ-001",
+      "name": "J吉螺栓项目 · 示例",
+      "customer_name": "J吉",
+      "remark": "演示数据，不对应真实 NAS 文件；界面统计按已登记记录计算。"
+    }
+  ],
+  "products": [
+    {
+      "id": 1,
+      "code": "DEMO-BOLT-RANGE",
+      "name": "外六角螺栓 · 规格待细分",
+      "category_id": 2,
+      "spec_text": "M4～M12",
+      "remark": "材质未知，不填写材质；来自原始资料的规格范围。"
+    }
+  ],
+  "assets": [
+    {
+      "id": 1,
+      "asset_type": "archive",
+      "file_name": "缺陷样本.zip",
+      "storage_location_id": 1,
+      "relative_path": "J吉/缺陷样本.zip",
+      "storage_mode": "file",
+      "status": "unverified",
+      "remark": "演示：包级包含裂纹、牙伤、牙底积液"
+    },
+    {
+      "id": 2,
+      "asset_type": "image",
+      "file_name": "001.bmp",
+      "storage_mode": "archive_member",
+      "status": "unverified"
+    },
+    {
+      "id": 3,
+      "asset_type": "image",
+      "file_name": "002.bmp",
+      "storage_mode": "archive_member",
+      "status": "unverified"
+    },
+    {
+      "id": 4,
+      "asset_type": "image",
+      "file_name": "003.bmp",
+      "storage_mode": "archive_member",
+      "status": "unverified"
+    },
+    {
+      "id": 5,
+      "asset_type": "engineering",
+      "file_name": "侧面检测工程.proj",
+      "storage_location_id": 1,
+      "relative_path": "J吉/工程/侧面检测工程.proj",
+      "storage_mode": "file",
+      "status": "unverified"
+    }
+  ],
+  "images": [
+    {
+      "id": 1,
+      "asset_id": 2,
+      "width": 2048,
+      "height": 2048,
+      "channels": 1,
+      "quality_label": "NG",
+      "inspection_surface": "侧面",
+      "station_name": "CCD-2",
+      "annotation_status": "reviewed"
+    },
+    {
+      "id": 2,
+      "asset_id": 3,
+      "width": 2048,
+      "height": 2048,
+      "channels": 1,
+      "quality_label": "unknown",
+      "inspection_surface": "侧面",
+      "station_name": "CCD-2",
+      "annotation_status": "unlabeled"
+    },
+    {
+      "id": 3,
+      "asset_id": 4,
+      "width": 2048,
+      "height": 2048,
+      "channels": 1,
+      "quality_label": "unknown",
+      "inspection_surface": "侧面",
+      "station_name": "CCD-2",
+      "annotation_status": "unlabeled"
+    }
+  ],
+  "engineering_projects": [
+    {
+      "id": 1,
+      "asset_id": 5,
+      "name": "外六角螺栓侧面检测",
+      "software_name": "AOI 检测软件",
+      "engineering_version": "v1.0",
+      "remark": "示例工程记录"
+    }
+  ],
+  "project_products": [
+    {
+      "id": 1,
+      "project_id": 1,
+      "product_id": 1
+    }
+  ],
+  "project_assets": [
+    {
+      "id": 1,
+      "project_id": 1,
+      "asset_id": 1
+    },
+    {
+      "id": 2,
+      "project_id": 1,
+      "asset_id": 2
+    },
+    {
+      "id": 3,
+      "project_id": 1,
+      "asset_id": 3
+    },
+    {
+      "id": 4,
+      "project_id": 1,
+      "asset_id": 4
+    },
+    {
+      "id": 5,
+      "project_id": 1,
+      "asset_id": 5
+    }
+  ],
+  "asset_products": [
+    {
+      "id": 1,
+      "asset_id": 1,
+      "product_id": 1
+    },
+    {
+      "id": 2,
+      "asset_id": 2,
+      "product_id": 1
+    },
+    {
+      "id": 3,
+      "asset_id": 3,
+      "product_id": 1
+    },
+    {
+      "id": 4,
+      "asset_id": 4,
+      "product_id": 1
+    },
+    {
+      "id": 5,
+      "asset_id": 5,
+      "product_id": 1
+    }
+  ],
+  "product_processes": [
+    {
+      "id": 1,
+      "product_id": 1,
+      "process_id": 1
+    }
+  ],
+  "image_defects": [
+    {
+      "id": 1,
+      "image_id": 1,
+      "defect_type_id": 1,
+      "remark": "演示：仅 001.bmp 确认裂纹"
+    }
+  ],
+  "asset_defects": [
+    {
+      "id": 1,
+      "asset_id": 1,
+      "defect_type_id": 1
+    },
+    {
+      "id": 2,
+      "asset_id": 1,
+      "defect_type_id": 2
+    },
+    {
+      "id": 3,
+      "asset_id": 1,
+      "defect_type_id": 3
+    }
+  ],
+  "asset_relations": [
+    {
+      "id": 1,
+      "source_asset_id": 1,
+      "target_asset_id": 2,
+      "relation_type": "contains",
+      "member_path": "Src/001.bmp"
+    },
+    {
+      "id": 2,
+      "source_asset_id": 1,
+      "target_asset_id": 3,
+      "relation_type": "contains",
+      "member_path": "Src/002.bmp"
+    },
+    {
+      "id": 3,
+      "source_asset_id": 1,
+      "target_asset_id": 4,
+      "relation_type": "contains",
+      "member_path": "Src/003.bmp"
+    },
+    {
+      "id": 4,
+      "source_asset_id": 5,
+      "target_asset_id": 2,
+      "relation_type": "paired"
+    }
+  ],
+  "image_embeddings": []
+}

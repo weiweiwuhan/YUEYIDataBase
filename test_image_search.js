@@ -1,0 +1,27 @@
+// Uses isolated sample data; no browser or user database changes.
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const elements=new Map();
+const el=key=>{if(!elements.has(key))elements.set(key,{value:'',innerHTML:'',textContent:'',style:{},querySelectorAll:()=>[]});return elements.get(key)};
+const context=vm.createContext({document:{querySelector:el},setTimeout:()=>{},console});
+let source=fs.readFileSync(__dirname+'/static/app.js','utf8');
+source=source.replace(/;refresh\(\)\.catch\(e=>\{.*?\}\);/,';');
+vm.runInContext(source,context);
+const sample=JSON.parse(fs.readFileSync(__dirname+'/sample.json','utf8'));sample.videos=[{id:1,image_id:1,name:'设备演示录像',file_name:'demo.mp4'}];
+vm.runInContext('S='+JSON.stringify({data:sample})+';',context);
+const run=code=>vm.runInContext(code,context);
+assert.equal(run('matchingImageResults({}).length'),sample.images.length);
+assert.equal(run("matchingImageResults({q:'设备演示录像'}).length"),1);
+assert.equal(run("matchingImageResults({q:'不存在的工程关键词'}).length"),0);
+const en=sample.engineering_projects[0];
+run("S.data.engineering_projects[0].name='唯一工程检索词'");
+const linked=sample.asset_relations.filter(r=>r.source_asset_id===en.asset_id&&r.relation_type==='paired').length;
+assert.equal(run("matchingImageResults({q:'唯一工程检索词'}).length"),linked);
+assert.equal(run('matchingImageResults({defect:1}).length'),sample.image_defects.filter(r=>r.defect_type_id===1).length);
+run('search()');
+assert(!el('#content').innerHTML.includes('id="stype"'));
+assert.equal((el('#results').innerHTML.match(/<article /g)||[]).length,sample.images.length);
+assert(!el('#results').innerHTML.includes('编辑资源'));
+assert(el('#results').innerHTML.includes('data-searchvideo="1"'));
+assert(el('#results').innerHTML.includes('data-searchimage='));
+assert(el('#searchcount').textContent.includes('张图片'));
+console.log('PASS: image-only results, engineering/video keyword search, confirmed-image defect filter, linked video actions, thumbnail cards, image counts, no resource type filter');

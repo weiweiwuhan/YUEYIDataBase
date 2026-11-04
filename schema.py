@@ -1,0 +1,51 @@
+"""Single source for UI, SQLite and MySQL DDL. No destructive initialization."""
+def col(name,label,kind='text',required=False,ref=None,choices=None):
+    return dict(name=name,label=label,kind=kind,required=required,ref=ref,choices=choices)
+def table(name,label,group,description,fields,unique=None):
+    return dict(name=name,label=label,group=group,description=description,fields=[col('id','编号','id')]+fields,unique=unique or [])
+T=[]
+def add(*a,**k): T.append(table(*a,**k))
+add('storage_locations','存储位置','配置','定义 NAS 根目录；资源只保存相对路径。',[col('name','位置名称',required=True),col('root_path','NAS 根目录',required=True)],unique=[['name']])
+add('product_categories','产品分类','配置','parent_id 支持大类 → 细分的树形分类。',[col('name','分类名称',required=True),col('parent_id','上级分类','int',ref='product_categories')],unique=[['name']])
+add('materials','材质字典','配置','未知材质留空，后期补录。',[col('name','材质名称',required=True),col('remark','备注')],unique=[['name']])
+add('process_types','工艺字典','配置','先建立选项，再在产品工艺表中关联产品。',[col('name','工艺名称',required=True),col('remark','备注')],unique=[['name']])
+add('defect_types','缺陷字典','配置','统一缺陷名称；登记选项不代表图片已有该缺陷。',[col('name','缺陷名称',required=True),col('remark','备注')],unique=[['name']])
+add('projects','项目','主表','一个客户可有多个项目。',[col('code','项目编号',required=True),col('name','项目名称',required=True),col('customer_name','客户简称'),col('remark','备注')],unique=[['code']])
+add('products','产品','主表','每条记录代表一种产品规格；未知规格可先写原始描述。',[col('code','内部兼容键'),col('name','产品名称',required=True),col('category_id','产品分类','int',ref='product_categories'),col('material_id','材质','int',ref='materials'),col('spec_text','规格描述'),col('diameter_mm','直径 mm','real'),col('length_mm','长度 mm','real'),col('remark','备注')],unique=[['code']])
+add('assets','文件资源','主表','每个文件或压缩包成员是一个资源。NAS 文件登记路径，本地上传文件另存 data/uploads。',[col('asset_type','资源类型',required=True,choices=['image','archive','engineering','annotation','document','other']),col('file_name','文件名',required=True),col('storage_location_id','存储位置','int',ref='storage_locations'),col('relative_path','相对路径'),col('storage_mode','存储形式',required=True,choices=['file','archive_member']),col('file_size','大小 bytes','int'),col('sha256','SHA-256'),col('status','状态',required=True,choices=['available','unverified','missing','pending','failed']),col('remark','备注')])
+add('images','图片','主表','通过 asset_id 一对一关联文件资源；未确认与 OK/NG 分开。',[col('asset_id','图片资源','int',True,'assets'),col('width','宽 px','int'),col('height','高 px','int'),col('channels','通道数','int'),col('quality_label','图片判定',required=True,choices=['unknown','OK','NG']),col('inspection_surface','检测面'),col('station_name','CCD 工位'),col('annotation_status','标注状态',required=True,choices=['unlabeled','labeled','reviewed']),col('thumbnail_path','缩略图路径')],unique=[['asset_id']])
+add('engineering_projects','检测工程','主表','每次工程版本单独登记，并保留旧文件。',[col('asset_id','工程资源','int',True,'assets'),col('local_path','本地工程路径'),col('name','工程名称',required=True),col('software_name','软件名称'),col('software_version','软件版本'),col('engineering_version','工程版本'),col('remark','备注')],unique=[['asset_id']])
+add('project_products','项目—产品','关系','项目和产品的多对多关系。',[col('project_id','项目','int',True,'projects'),col('product_id','产品','int',True,'products')],unique=[['project_id','product_id']])
+add('project_assets','项目—资源','关系','每张需按项目检索的图片也应显式关联项目。',[col('project_id','项目','int',True,'projects'),col('asset_id','资源','int',True,'assets')],unique=[['project_id','asset_id']])
+add('asset_products','资源—产品','关系','资源可关联多个产品；图片也应显式关联。',[col('asset_id','资源','int',True,'assets'),col('product_id','产品','int',True,'products')],unique=[['asset_id','product_id']])
+add('product_processes','产品—工艺','关系','一个产品支持镀锌、滚丝等多个工艺。',[col('product_id','产品','int',True,'products'),col('process_id','工艺','int',True,'process_types')],unique=[['product_id','process_id']])
+add('image_defects','图片—缺陷','关系','仅登记已确认的逐图缺陷。',[col('image_id','图片','int',True,'images'),col('defect_type_id','缺陷','int',True,'defect_types'),col('remark','确认说明')],unique=[['image_id','defect_type_id']])
+add('asset_defects','资料包—缺陷','关系','表示包级包含这些缺陷，不会自动标为每张图片的缺陷。',[col('asset_id','资料资源','int',True,'assets'),col('defect_type_id','缺陷','int',True,'defect_types'),col('remark','说明')],unique=[['asset_id','defect_type_id']])
+add('asset_relations','资源关联','关系','contains: 压缩包→成员；paired: 工程→图片；annotation: 图片→标注；version: 旧→新。',[col('source_asset_id','来源资源','int',True,'assets'),col('target_asset_id','目标资源','int',True,'assets'),col('relation_type','关系类型',required=True,choices=['contains','paired','annotation','version']),col('member_path','压缩包内路径')],unique=[['source_asset_id','target_asset_id','relation_type']])
+add('image_embeddings','图像特征登记','扩展','预留向量索引登记；本版本不生成特征、不提供以图搜图。',[col('image_id','图片','int',True,'images'),col('model_name','模型',required=True),col('model_version','模型版本',required=True),col('dimension','特征维度','int',True),col('vector_key','向量索引键',required=True)],unique=[['image_id','model_name','model_version'],['vector_key']])
+add('videos','视频资料','主表','视频上传到本机，每条视频绑定一张产品图片；一张图片可绑定多个视频。',[col('image_id','绑定产品图片','int',True,'images'),col('name','视频名称',required=True),col('file_name','原文件名',required=True),col('relative_path','视频存储路径',required=True),col('file_size','大小 bytes','int'),col('remark','备注')])
+TABLES={t['name']:t for t in T}
+def ddl(mysql=False):
+    out=['-- AOI Industrial Asset Catalog v1.2 | 19 tables', '-- Non-destructive DDL: existing tables are preserved.']
+    if mysql: out+=['CREATE DATABASE IF NOT EXISTS aoi_catalog CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;','USE aoi_catalog;']
+    for t in T:
+        lines=[];constraints=[]
+        for c in t['fields']:
+            n=c['name'];k=c['kind']
+            if k=='id': s='BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY' if mysql else 'INTEGER PRIMARY KEY AUTOINCREMENT'
+            else:
+                s=({'int':'BIGINT','real':'DOUBLE'}.get(k,'VARCHAR(1024)' if n in ('remark','relative_path','member_path','root_path','thumbnail_path','local_path') else 'VARCHAR(191)') if mysql else {'int':'INTEGER','real':'REAL'}.get(k,'TEXT'))
+                if c['required']:s+=' NOT NULL'
+            lines.append(f'  `{n}` {s}')
+            if c['choices']:constraints.append('  CHECK (`'+n+'` IN ('+', '.join("'"+x+"'" for x in c['choices'])+'))')
+            if c['ref']:constraints.append(f'  FOREIGN KEY (`{n}`) REFERENCES `{c["ref"]}` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT')
+            if k in ('int','real') and not c['ref']:constraints.append(f'  CHECK (`{n}` IS NULL OR `{n}` >= 0)')
+        lines+=constraints
+        for u in t['unique']:lines.append('  UNIQUE ('+', '.join('`'+x+'`' for x in u)+')')
+        out.append(f'CREATE TABLE IF NOT EXISTS `{t["name"]}` (\n'+',\n'.join(lines)+'\n)'+(' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;' if mysql else ';'))
+    for t in T:
+        for c in t['fields']:
+            if c['ref']:
+                # MySQL creates indexes for foreign keys itself.
+                if not mysql:out.append(f'CREATE INDEX IF NOT EXISTS `idx_{t["name"]}_{c["name"]}` ON `{t["name"]}` (`{c["name"]}`);')
+    return '\n\n'.join(out)+'\n'

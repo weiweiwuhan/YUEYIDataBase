@@ -1,0 +1,3 @@
+# Only needed for MySQL mode; SQLite mode uses the Python standard library.
+PyMySQL>=1.1,<2
+Pillow>=10,<13
