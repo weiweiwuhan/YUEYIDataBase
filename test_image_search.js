@@ -29,3 +29,8 @@ console.log('PASS: image-only results, engineering/video keyword search, confirm
 const expected=[...sample.images].sort((a,b)=>Number(sample.image_defects.some(d=>d.image_id===a.id))-Number(sample.image_defects.some(d=>d.image_id===b.id))||b.id-a.id).map(i=>i.id);
 assert.deepEqual(Array.from(run('matchingImageResults({}).map(r=>r.i.id)')),expected);
 console.log('PASS: unassigned-defect images first, newest ID first within each group');
+
+run("S.data.after_sales=[{status:'待处理'},{status:'处理中'},{status:'已解决'}]; S.data.engineering_projects=[{id:1,image_count:120},{id:2,image_count:0},{id:3,image_count:null}]");
+const stats=run('dashboardStats()');
+assert.equal(stats.engineering,3);assert.equal(stats.total,120);assert.equal(stats.unknown,1);assert.equal(stats.openSales,2);assert.equal(stats.uploaded,sample.images.length);
+console.log('PASS: dashboard manual image totals, zero counts, missing counts and pending after-sales');

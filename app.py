@@ -88,6 +88,7 @@ def initialize():
             if not s.strip() or 'CREATE DATABASE' in s or s.strip().startswith('USE '):continue
             execute(c,s)
         fields=[x['Field'] for x in execute(c,'SHOW COLUMNS FROM engineering_projects').fetchall()] if MYSQL else [x['name'] for x in execute(c,'PRAGMA table_info(engineering_projects)').fetchall()]
+        if 'image_count' not in fields:execute(c,'ALTER TABLE engineering_projects ADD COLUMN image_count '+('BIGINT' if MYSQL else 'INTEGER'))
         if 'local_path' not in fields:execute(c,'ALTER TABLE engineering_projects ADD COLUMN local_path '+('VARCHAR(1024)' if MYSQL else 'TEXT'))
         agreement_fields=[x['Field'] for x in execute(c,'SHOW COLUMNS FROM technical_agreements').fetchall()] if MYSQL else [x['name'] for x in execute(c,'PRAGMA table_info(technical_agreements)').fetchall()]
         if 'extracted_text' not in agreement_fields:execute(c,'ALTER TABLE technical_agreements ADD COLUMN extracted_text '+('LONGTEXT' if MYSQL else 'TEXT'))
@@ -313,7 +314,7 @@ class Handler(BaseHTTPRequestHandler):
                 import ntpath
                 if not (ntpath.isabs(path) or Path(path).is_absolute()) or len(path)>1024:raise ValueError('请填写完整本地路径，例如 D:\\AOI\\项目工程')
                 aid=save(c,'assets',dict(asset_type='engineering',file_name=ntpath.basename(path.rstrip('\\/')) or '本地工程',storage_mode='file',status='unverified'))
-                eid=save(c,'engineering_projects',dict(asset_id=aid,name=payload.get('name') or ntpath.basename(path),local_path=path,engineering_version=payload.get('engineering_version') or 'v1'))
+                eid=save(c,'engineering_projects',dict(asset_id=aid,name=payload.get('name') or ntpath.basename(path),local_path=path,engineering_version=payload.get('engineering_version') or 'v1',image_count=payload.get('image_count')))
                 result=dict(ok=True,id=eid)
             elif p.path=='/api/open-engineering':
                 import ipaddress,subprocess

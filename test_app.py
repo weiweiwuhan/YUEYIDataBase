@@ -135,9 +135,15 @@ with tempfile.TemporaryDirectory() as tmp:
         mat=req('/api/save',{'table':'materials','record':{'name':'自定义材质'}})['id']
         product=req('/api/save',{'table':'products','record':{'name':'无编号产品','category_id':sub,'material_id':mat}})['id']
         req('/api/save',{'table':'products','id':product,'record':{'name':'更新无编号产品','category_id':sub,'material_id':mat}})
-        local=req('/api/local-engineering',{'name':'本地工程','local_path':r'D:\AOI\客户\project.proj'})['id']
+        local=req('/api/local-engineering',{'name':'本地工程','local_path':r'D:\AOI\客户\project.proj','image_count':120})['id']
         req('/api/bind',{'image_id':im['id'],'engineering_id':local})
         localrow=next(e for e in req('/api/state')['data']['engineering_projects'] if e['id']==local)
+        assert localrow['image_count']==120
+        req('/api/save',{'table':'engineering_projects','id':local,'record':{**localrow,'image_count':180}})
+        assert next(e for e in req('/api/state')['data']['engineering_projects'] if e['id']==local)['image_count']==180
+        for bad_count in (-1,1.5):
+            try:req('/api/save',{'table':'engineering_projects','id':local,'record':{**localrow,'image_count':bad_count}});assert False
+            except urllib.error.HTTPError:pass
         assert localrow['local_path']==r'D:\AOI\客户\project.proj'
         req('/api/bag-defects',{'asset_id':result['asset_id'],'defect_ids':[1,2,3]})
         req('/api/bag-defects',{'asset_id':result['asset_id'],'defect_ids':[1,2,3]})

@@ -111,11 +111,13 @@ CREATE TABLE IF NOT EXISTS `engineering_projects` (
   `asset_id` BIGINT NOT NULL,
   `local_path` VARCHAR(1024),
   `name` VARCHAR(191) NOT NULL,
+  `image_count` BIGINT,
   `software_name` VARCHAR(191),
   `software_version` VARCHAR(191),
   `engineering_version` VARCHAR(191),
   `remark` VARCHAR(1024),
   FOREIGN KEY (`asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`image_count` IS NULL OR `image_count` >= 0),
   UNIQUE (`asset_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
