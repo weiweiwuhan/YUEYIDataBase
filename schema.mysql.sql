@@ -1,4 +1,4 @@
--- AOI Industrial Asset Catalog v1.2 | 19 tables
+-- AOI Industrial Asset Catalog | 22 tables
 
 -- Non-destructive DDL: existing tables are preserved.
 
@@ -210,4 +210,42 @@ CREATE TABLE IF NOT EXISTS `videos` (
   `remark` VARCHAR(1024),
   FOREIGN KEY (`image_id`) REFERENCES `images` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CHECK (`file_size` IS NULL OR `file_size` >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `technical_agreements` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `project_id` BIGINT NOT NULL,
+  `code` VARCHAR(191) NOT NULL,
+  `name` VARCHAR(191) NOT NULL,
+  `signed_date` VARCHAR(191),
+  `requirements` VARCHAR(1024),
+  `remark` VARCHAR(1024),
+  FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  UNIQUE (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `agreement_products` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `agreement_id` BIGINT NOT NULL,
+  `product_id` BIGINT NOT NULL,
+  FOREIGN KEY (`agreement_id`) REFERENCES `technical_agreements` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  UNIQUE (`agreement_id`, `product_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `after_sales` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `project_id` BIGINT NOT NULL,
+  `product_id` BIGINT NOT NULL,
+  `name` VARCHAR(191) NOT NULL,
+  `service_date` VARCHAR(191),
+  `status` VARCHAR(191) NOT NULL,
+  `symptom` VARCHAR(1024),
+  `cause` VARCHAR(1024),
+  `resolution` VARCHAR(1024),
+  `experience` VARCHAR(1024),
+  `remark` VARCHAR(1024),
+  FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`status` IN ('待处理', '处理中', '已解决'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

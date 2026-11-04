@@ -2,7 +2,7 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const elements=new Map();
 const el=key=>{if(!elements.has(key))elements.set(key,{value:'',innerHTML:'',textContent:'',style:{},querySelectorAll:()=>[]});return elements.get(key)};
-const context=vm.createContext({document:{querySelector:el},setTimeout:()=>{},console});
+const context=vm.createContext({document:{querySelector:el},setTimeout:()=>{},MutationObserver:class {observe(){}},console});
 let source=fs.readFileSync(__dirname+'/static/app.js','utf8');
 source=source.replace(/;refresh\(\)\.catch\(e=>\{.*?\}\);/,';');
 vm.runInContext(source,context);

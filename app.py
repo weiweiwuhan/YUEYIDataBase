@@ -40,7 +40,7 @@ def validate(c,t,r,exclude=None):
                 v=float(v)
                 if not math.isfinite(v) or v<0:raise ValueError(f['label']+'须为非负有限数值')
             else:
-                v=str(v);maxlen=1024 if n in ('remark','relative_path','member_path','root_path','thumbnail_path','local_path') else 191
+                v=str(v);maxlen=1024 if n in ('requirements','symptom','cause','resolution','experience','remark','relative_path','member_path','root_path','thumbnail_path','local_path') else 191
                 if len(v)>maxlen:raise ValueError(f['label']+'内容过长')
             if f['choices'] and v not in f['choices']:raise ValueError(f['label']+'选项不合法')
         out[n]=v
@@ -88,6 +88,8 @@ def initialize():
             execute(c,s)
         fields=[x['Field'] for x in execute(c,'SHOW COLUMNS FROM engineering_projects').fetchall()] if MYSQL else [x['name'] for x in execute(c,'PRAGMA table_info(engineering_projects)').fetchall()]
         if 'local_path' not in fields:execute(c,'ALTER TABLE engineering_projects ADD COLUMN local_path '+('VARCHAR(1024)' if MYSQL else 'TEXT'))
+        import auth
+        auth.initialize(c,execute,MYSQL)
         c.commit()
     finally:c.close()
 def mysql_data(c):
@@ -116,6 +118,14 @@ def image_info(path):
         return dict(width=im.width,height=im.height,channels=len(im.getbands()))
 
 class Handler(BaseHTTPRequestHandler):
+    def identity(self,c):
+        import auth
+        return auth.identity(c,execute,self.headers.get('Cookie',''))
+    def require(self,c,admin=False):
+        user=self.identity(c)
+        if not user:raise PermissionError('请先登录后再录入')
+        if admin and user['role']!='admin':raise PermissionError('仅管理员可以执行此操作')
+        return user
     def reply(self,obj,status=200,ctype='application/json; charset=utf-8'):
         b=obj if isinstance(obj,bytes) else (json.dumps(obj,ensure_ascii=False).encode() if ctype.startswith('application/json') else obj.encode())
         self.send_response(status);self.send_header('Content-Type',ctype);self.send_header('Content-Length',str(len(b)));self.send_header('X-Content-Type-Options','nosniff');self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(b)
@@ -171,20 +181,22 @@ class Handler(BaseHTTPRequestHandler):
                         if im.mode not in ('1','L','LA','RGB','RGBA','I;16','I'):im=im.convert('RGB')
                         im.save(out,format='PNG');self.reply(out.getvalue(),ctype='image/png')
                 return
+            if p.path=='/api/auth/users':
+                c=connect();self.require(c,True);self.reply([dict(x) for x in execute(c,'SELECT id,username,role FROM app_users ORDER BY id').fetchall()]);return
             if p.path=='/api/state':
-                c=connect();self.reply(dict(schema=T,data=snapshot(c),engine='MySQL' if MYSQL else 'SQLite',version='1.2.1'));return
+                c=connect();self.reply(dict(schema=T,data=snapshot(c),engine='MySQL' if MYSQL else 'SQLite',version='1.3',auth=self.identity(c)));return
             if p.path=='/api/sql':
                 c=connect();self.reply(mysql_data(c) if parse_qs(p.query).get('data')==['1'] else ddl(True),ctype='text/plain; charset=utf-8');return
             if p.path in ('/','/app.js','/style.css'):
                 f=ROOT/'static'/({'/':'index.html'}.get(p.path,p.path[1:]));self.reply(f.read_bytes(),ctype={'/':'text/html; charset=utf-8','/app.js':'text/javascript; charset=utf-8','/style.css':'text/css; charset=utf-8'}[p.path]);return
             self.reply({'error':'Not found'},404)
-        except Exception as e:self.reply({'error':str(e)},400)
+        except Exception as e:self.reply({'error':str(e)},403 if isinstance(e,PermissionError) else 400)
         finally:
             if c:c.close()
     def do_POST(self):
         # Same-origin writes only, including multipart-free binary uploads.
         origin=self.headers.get('Origin')
-        if origin and origin!='http://'+self.headers.get('Host',''):
+        if origin and origin not in ('http://'+self.headers.get('Host',''),'https://'+self.headers.get('Host','')):
             self.reply({'error':'跨来源写入已拒绝'},403);return
         if self.headers.get('X-AOI-Client')!='local-v1':self.reply({'error':'缺少本地客户端标识'},403);return
         c=None;created=[]
@@ -192,6 +204,16 @@ class Handler(BaseHTTPRequestHandler):
             n=int(self.headers.get('Content-Length','0'))
             if n>1024*1024*1024:raise ValueError('单次上传上限 1 GB')
             p=urlparse(self.path);c=connect()
+            if p.path.startswith('/api/auth/'):
+                import auth
+                payload=json.loads(self.rfile.read(n) or b'{}')
+                result,cookie=auth.handle(c,execute,self,p.path,payload)
+                c.commit()
+                body=json.dumps(result,ensure_ascii=False).encode()
+                self.send_response(200)
+                if cookie:self.send_header('Set-Cookie',cookie)
+                self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
+            self.require(c,p.path in ('/api/delete','/api/import','/api/seed'))
             if p.path=='/api/upload':
                 q=parse_qs(p.query);name=q.get('name',['upload.bin'])[0].replace('\\','/').split('/')[-1]
                 if not name or len(name)>191:raise ValueError('文件名不合法')
@@ -244,6 +266,7 @@ class Handler(BaseHTTPRequestHandler):
                             count+=1
                 c.commit();self.reply(dict(ok=True,asset_id=aid,members=count));return
             payload=json.loads(self.rfile.read(n) or b'{}')
+            if p.path=='/api/bind' and payload.get('remove'):self.require(c,True)
             if p.path=='/api/local-engineering':
                 path=str(payload.get('local_path','')).strip().strip('"')
                 import ntpath
@@ -275,6 +298,7 @@ class Handler(BaseHTTPRequestHandler):
                 args=(en['asset_id'],image['asset_id'],'paired')
                 old=execute(c,'SELECT id FROM asset_relations WHERE source_asset_id=? AND target_asset_id=? AND relation_type=?',args).fetchone()
                 if payload.get('remove'):
+                    self.require(c,True)
                     if old:execute(c,'DELETE FROM asset_relations WHERE id=?',(old['id'],))
                 elif not old:save(c,'asset_relations',dict(source_asset_id=en['asset_id'],target_asset_id=image['asset_id'],relation_type='paired'))
                 result=dict(ok=True)
@@ -302,7 +326,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             if c:c.rollback()
             for f in created:f.unlink(missing_ok=True)
-            self.reply({'error':str(e)},400)
+            self.reply({'error':str(e)},403 if isinstance(e,PermissionError) else 400)
         finally:
             if c:c.close()
 def main():
