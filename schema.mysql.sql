@@ -1,4 +1,4 @@
--- AOI Industrial Asset Catalog | 23 tables
+-- AOI Industrial Asset Catalog | 25 tables
 
 -- Non-destructive DDL: existing tables are preserved.
 
@@ -259,5 +259,30 @@ CREATE TABLE IF NOT EXISTS `agreement_files` (
   `asset_id` BIGINT NOT NULL,
   FOREIGN KEY (`agreement_id`) REFERENCES `technical_agreements` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   FOREIGN KEY (`asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  UNIQUE (`asset_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `model_tests` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `name` VARCHAR(191) NOT NULL,
+  `project_id` BIGINT,
+  `model_name` VARCHAR(191) NOT NULL,
+  `model_version` VARCHAR(191),
+  `test_date` VARCHAR(191),
+  `result` VARCHAR(191),
+  `prompt` VARCHAR(1024),
+  `remark` VARCHAR(1024),
+  FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`result` IN ('待评价', '效果好', '一般', '效果差'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `model_test_files` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `test_id` BIGINT NOT NULL,
+  `asset_id` BIGINT NOT NULL,
+  `role` VARCHAR(191) NOT NULL,
+  FOREIGN KEY (`test_id`) REFERENCES `model_tests` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  FOREIGN KEY (`asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`role` IN ('input', 'result')),
   UNIQUE (`asset_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

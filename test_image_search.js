@@ -34,3 +34,11 @@ run("S.data.after_sales=[{status:'待处理'},{status:'处理中'},{status:'已�
 const stats=run('dashboardStats()');
 assert.equal(stats.engineering,3);assert.equal(stats.total,120);assert.equal(stats.unknown,1);assert.equal(stats.openSales,2);assert.equal(stats.uploaded,sample.images.length);
 console.log('PASS: dashboard manual image totals, zero counts, missing counts and pending after-sales');
+
+run("extraDialog=html=>{globalThis.lastDialog=html;return {querySelector:()=>({}),close:()=>{}}};table='engineering_projects';edit(1)");
+assert(context.lastDialog.includes('name="image_count"'));
+assert(context.lastDialog.includes('value="120"'));
+assert(!context.lastDialog.includes('name="software_name"'));
+assert(!context.lastDialog.includes('name="asset_id"'));
+assert.equal(run('pages.modeltests[1]'),'大模型测试记录');
+console.log('PASS: engineering edit opens explicit image count form without hidden asset/software inputs; model-test navigation registered');

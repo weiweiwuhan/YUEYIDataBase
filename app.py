@@ -40,7 +40,7 @@ def validate(c,t,r,exclude=None):
                 v=float(v)
                 if not math.isfinite(v) or v<0:raise ValueError(f['label']+'须为非负有限数值')
             else:
-                v=str(v);maxlen=1024 if n in ('requirements','symptom','cause','resolution','experience','remark','relative_path','member_path','root_path','thumbnail_path','local_path') else 191
+                v=str(v);maxlen=1024 if n in ('prompt','requirements','symptom','cause','resolution','experience','remark','relative_path','member_path','root_path','thumbnail_path','local_path') else 191
                 if n=='extracted_text':maxlen=100000
                 if len(v)>maxlen:raise ValueError(f['label']+'内容过长')
             if f['choices'] and v not in f['choices']:raise ValueError(f['label']+'选项不合法')
@@ -224,12 +224,16 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 if cookie:self.send_header('Set-Cookie',cookie)
                 self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
-            self.require(c,p.path in ('/api/delete','/api/import','/api/seed'))
+            self.require(c,p.path in ('/api/delete','/api/import','/api/seed','/api/model-test-delete'))
             if p.path=='/api/upload':
                 q=parse_qs(p.query);name=safe_filename(q.get('name',['upload.bin'])[0])
                 if q.get('kind')==['agreement']:
                     if n>256*1024*1024:raise ValueError('协议附件单文件最多 256 MB')
                     if not execute(c,'SELECT id FROM technical_agreements WHERE id=?',(int(q.get('agreement_id',['0'])[0]),)).fetchone():raise ValueError('请先保存并选择技术协议，再上传附件')
+                if q.get('kind')==['modeltest']:
+                    if n>256*1024*1024:raise ValueError('测试图片单文件最多 256 MB')
+                    if not execute(c,'SELECT id FROM model_tests WHERE id=?',(int(q.get('test_id',['0'])[0]),)).fetchone():raise ValueError('请先保存测试记录')
+                    if q.get('role',[''])[0] not in ('input','result'):raise ValueError('请选择原图或效果图')
                 dest=UPLOADS/(uuid.uuid4().hex+'_'+name);h=hashlib.sha256();remain=n
                 with dest.open('wb') as out:
                     created.append(dest)
@@ -245,6 +249,8 @@ class Handler(BaseHTTPRequestHandler):
                 loc=execute(c,'SELECT id FROM storage_locations WHERE name=?',('本地上传',)).fetchone()
                 lid=loc['id'] if loc else save(c,'storage_locations',dict(name='本地上传',root_path=str(UPLOADS)))
                 ext=dest.suffix.lower();kind='image' if ext in ('.png','.bmp','.jpg','.jpeg','.tif','.tiff','.webp') else 'archive' if ext=='.zip' else 'other'
+                modeltest=q.get('kind')==['modeltest']
+                if modeltest and kind!='image':raise ValueError('请上传图片格式的测试原图或效果图')
                 engineering=q.get('kind',[''])[0]=='engineering'
                 agreement=q.get('kind')==['agreement']
                 if agreement:kind='document'
@@ -252,6 +258,7 @@ class Handler(BaseHTTPRequestHandler):
                 if q.get('image_only')==['1'] and kind!='image':raise ValueError('请选择图片文件')
                 info=image_info(dest) if kind=='image' else {}
                 aid=save(c,'assets',dict(asset_type=kind,file_name=name,storage_location_id=lid,relative_path=dest.name,storage_mode='file',file_size=n,sha256=h.hexdigest(),status='available'))
+                if modeltest:save(c,'model_test_files',dict(test_id=int(q['test_id'][0]),asset_id=aid,role=q['role'][0]))
                 if agreement:
                     save(c,'agreement_files',dict(agreement_id=int(q.get('agreement_id',['0'])[0]),asset_id=aid))
                 pid=int(q.get('project_id',['0'])[0]);prod=int(q.get('product_id',['0'])[0])
@@ -259,7 +266,7 @@ class Handler(BaseHTTPRequestHandler):
                     if pid:save(c,'project_assets',dict(project_id=pid,asset_id=a))
                     if prod:save(c,'asset_products',dict(asset_id=a,product_id=prod))
                 links(aid);count=0
-                if kind=='image':
+                if kind=='image' and not modeltest:
                     iid=save(c,'images',dict(asset_id=aid,quality_label='unknown',annotation_status='unlabeled',**info))
                     eid=int(q.get('engineering_id',['0'])[0])
                     if eid:
@@ -284,7 +291,11 @@ class Handler(BaseHTTPRequestHandler):
                 c.commit();self.reply(dict(ok=True,asset_id=aid,members=count));return
             payload=json.loads(self.rfile.read(n) or b'{}')
             if p.path=='/api/bind' and payload.get('remove'):self.require(c,True)
-            if p.path=='/api/image-defects':
+            if p.path=='/api/model-test-delete':
+                test_id=int(payload['id'])
+                execute(c,'DELETE FROM model_test_files WHERE test_id=?',(test_id,))
+                execute(c,'DELETE FROM model_tests WHERE id=?',(test_id,));result=dict(ok=True)
+            elif p.path=='/api/image-defects':
                 image_ids=set(map(int,payload.get('image_ids',[])));defect_ids=set(map(int,payload.get('defect_ids',[])))
                 if not image_ids or not defect_ids:raise ValueError('请至少选择一张图片及一种缺陷')
                 if len(image_ids)*len(defect_ids)>10000:raise ValueError('单次最多绑定 10000 条关系')

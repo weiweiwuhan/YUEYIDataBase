@@ -19,7 +19,7 @@ with tempfile.TemporaryDirectory() as tmp:
         for _ in range(100):
             try:s=req('/api/state');break
             except Exception:time.sleep(.05)
-        assert len(s['schema'])==23 and all(not x for x in s['data'].values())
+        assert len(s['schema'])==25 and all(not x for x in s['data'].values())
         def denied(path,data=None,raw=None):
             try:req(path,data,raw);assert False,'Expected forbidden '+path
             except urllib.error.HTTPError as e:assert e.code==403
@@ -79,6 +79,29 @@ with tempfile.TemporaryDirectory() as tmp:
         try:req('/api/upload?name=bad.zip',raw=b'not zip');assert False
         except urllib.error.HTTPError:pass
         assert req('/api/state')['data']==old and list(Path(tmp,'uploads').iterdir())==files
+        # Model test records store original/effect images without inflating production image totals.
+        test_id=req('/api/save',{'table':'model_tests','record':{'name':'缺陷识别测试','model_name':'model-A','model_version':'v1','result':'效果好','remark':'效果图人工复核'}})['id']
+        from PIL import Image
+        test_png=io.BytesIO();Image.new('RGB',(32,24),(25,80,150)).save(test_png,format='PNG')
+        production_count=len(req('/api/state')['data']['images'])
+        for role in ('input','result'):
+            test_asset=req('/api/upload?kind=modeltest&test_id='+str(test_id)+'&role='+role+'&name=test.png',raw=test_png.getvalue())['asset_id']
+            assert opener.open('http://127.0.0.1:18765/api/media?id='+str(test_asset)+'&mode=original').read()==test_png.getvalue()
+        model_state=req('/api/state')['data']
+        assert len(model_state['images'])==production_count
+        assert len([f for f in model_state['model_test_files'] if f['test_id']==test_id])==2
+        before_files=set(Path(tmp,'uploads').iterdir())
+        try:req('/api/upload?kind=modeltest&test_id='+str(test_id)+'&role=result&name=invalid.png',raw=b'invalid');assert False
+        except urllib.error.HTTPError:pass
+        assert before_files==set(Path(tmp,'uploads').iterdir())
+        req('/api/auth/logout',{})
+        denied('/api/upload?kind=modeltest&test_id='+str(test_id)+'&role=result&name=blocked.png',raw=test_png.getvalue())
+        req('/api/auth/login',{'username':'editor','password':'test-editor-password'})
+        denied('/api/model-test-delete',{'id':test_id})
+        req('/api/auth/logout',{})
+        req('/api/auth/login',{'username':'admin','password':'test-admin-password'})
+        req('/api/model-test-delete',{'id':test_id})
+        assert not any(f['test_id']==test_id for f in req('/api/state')['data']['model_test_files'])
         # Real local image decode, thumbnail, full-resolution preview and exact engineering binding.
         from PIL import Image
         png=io.BytesIO();Image.new('RGB',(640,480),(10,80,150)).save(png,format='PNG')
@@ -164,7 +187,7 @@ with tempfile.TemporaryDirectory() as tmp:
         # Full JSON round trip on existing records.
         assert req('/api/import',{'data':old})['count']==sum(map(len,old.values()))
         sql=opener.open('http://127.0.0.1:18765/api/sql?data=1').read().decode()
-        assert sql.count('CREATE TABLE IF NOT EXISTS')==23 and 'START TRANSACTION;' in sql
+        assert sql.count('CREATE TABLE IF NOT EXISTS')==25 and 'START TRANSACTION;' in sql
         assert 'CONVERT(X\'' in sql and 'FOREIGN KEY' in sql
         accounts=req('/api/auth/users')
         editor_id=next(u['id'] for u in accounts if u['username']=='editor')
@@ -177,5 +200,5 @@ with tempfile.TemporaryDirectory() as tmp:
             except Exception:time.sleep(.05)
         assert after==old
         db=sqlite3.connect(Path(tmp)/'aoi.db');assert db.execute('PRAGMA integrity_check').fetchone()[0]=='ok';assert not db.execute('PRAGMA foreign_key_check').fetchall()
-        print('PASS: authentication, guest/editor/admin permissions, agreements, after-sales, 23 tables, seed, CRUD, FK protection, category cycle, transaction rollback, ZIP registration, upload rollback, JSON round trip, SQL export, restart persistence, DB integrity, real image upload, thumbnail, full-resolution preview, engineering binding/download/unbind, invalid-image rollback.')
+        print('PASS: authentication, guest/editor/admin permissions, agreements, after-sales, 25 tables, seed, CRUD, FK protection, category cycle, transaction rollback, ZIP registration, upload rollback, JSON round trip, SQL export, restart persistence, DB integrity, real image upload, thumbnail, full-resolution preview, engineering binding/download/unbind, invalid-image rollback.')
     finally:p.terminate();p.wait()
