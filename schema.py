@@ -30,6 +30,10 @@ add('after_sales','售后经验','主表','绑定项目与产品，积累故障�
 add('agreement_files','技术协议附件','关系','协议附件原文件保存在工程数据目录，可下载。',[col('agreement_id','技术协议','int',True,'technical_agreements'),col('asset_id','附件资源','int',True,'assets')],unique=[['asset_id']])
 add('model_tests','大模型测试记录','主表','记录人工执行的模型测试及效果，不自动调用外部模型。',[col('name','测试名称',required=True),col('project_id','关联项目','int',ref='projects'),col('model_name','模型名称',required=True),col('model_version','模型版本'),col('test_date','测试日期'),col('result','效果评价',choices=['待评价','效果好','一般','效果差']),col('prompt','测试环境备注'),col('product_id','关联产品','int',ref='products'),col('test_count','测试产品总数','int'),col('detection_rate','检出率 %','real'),col('miss_rate','历史漏检率 %','real'),col('yield_rate','良率 %','real'),col('remark','效果说明')])
 add('model_test_files','模型测试图片','关系','每次测试可保存多张原图和效果图。',[col('test_id','测试记录','int',True,'model_tests'),col('asset_id','图片文件','int',True,'assets'),col('role','图片用途',required=True,choices=['input','result'])],unique=[['asset_id']])
+for item in T:
+    item['fields'] += [col('created_by','录入作者'),col('created_at','录入时间'),col('updated_by','最后修改人'),col('updated_at','最后修改时间')]
+    for field in item['fields']:
+        if field['name'] in ('created_by','created_at','updated_by','updated_at'):field['readonly']=True
 TABLES={t['name']:t for t in T}
 for field in TABLES['videos']['fields']:
     if field['name']=='image_id':field['hidden']=True

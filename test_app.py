@@ -30,6 +30,8 @@ with tempfile.TemporaryDirectory() as tmp:
         denied('/api/upload?name=blocked.png',raw=b'blocked')
         denied('/api/auth/users')
         denied('/api/sql')
+        denied('/api/audit')
+        denied('/api/auth/users-batch',{'count':50})
         req('/api/auth/login',{'username':'admin','password':'test-admin-password'})
         req('/api/seed',{});s=req('/api/state');assert len(s['data']['images'])==3
         assert len(s['data']['image_defects'])==1 and len(s['data']['asset_defects'])==3
@@ -64,7 +66,15 @@ with tempfile.TemporaryDirectory() as tmp:
         req('/api/save',{'table':'after_sales','record':{'project_id':1,'product_id':1,'name':'售后经验','status':'已解决','experience':'预防措施'}})
         req('/api/auth/logout',{})
         req('/api/auth/login',{'username':'editor','password':'test-editor-password'})
-        req('/api/save',{'table':'materials','record':{'name':'录入员新增'}})
+        author_row=req('/api/save',{'table':'materials','record':{'name':'录入员新增','created_by':'fake-admin','created_at':'fake-time'}})['id']
+        stamped=next(r for r in req('/api/state')['data']['materials'] if r['id']==author_row)
+        assert stamped['created_by']=='editor' and stamped['created_at']!='fake-time'
+        assert stamped['updated_by']=='editor'
+        try:req('/api/save',{'table':'materials','id':author_row,'record':{'name':'would-overwrite'},'expected_updated_at':'outdated'});assert False
+        except urllib.error.HTTPError as e:assert e.code==409
+        assert next(r for r in req('/api/state')['data']['materials'] if r['id']==author_row)['name']=='录入员新增'
+        page=req('/api/records?table=materials&page=1&page_size=1')
+        assert len(page['data'])==1 and page['total']>0
         denied('/api/delete',{'table':'materials','id':1})
         denied('/api/import',{'data':{}})
         denied('/api/seed',{})
@@ -75,6 +85,7 @@ with tempfile.TemporaryDirectory() as tmp:
         req('/api/auth/login',{'username':'admin','password':'test-admin-password'})
         disposable=req('/api/save',{'table':'materials','record':{'name':'待删除'}})['id']
         req('/api/delete',{'table':'materials','id':disposable})
+        assert any(event['actor']=='editor' for event in req('/api/audit'))
         before=req('/api/state')['data']
         try:req('/api/import' ,{'data':{'materials':[{'name':'新材质'}],'image_defects':[{'image_id':999,'defect_type_id':1}]}});assert False
         except urllib.error.HTTPError:pass

@@ -5,7 +5,7 @@ import app,auth
 def main():
     app.initialize();c=app.connect()
     try:
-        if app.execute(c,'SELECT id FROM app_users LIMIT 1').fetchone():
+        if app.execute(c,'SELECT id FROM app_users WHERE role='admin' LIMIT 1').fetchone():
             raise SystemExit('已有账号，请由管理员登录网页创建账号或重置密码。')
         username=input('管理员账号: ').strip()
         if not username or len(username)>100:raise SystemExit('账号不合法')

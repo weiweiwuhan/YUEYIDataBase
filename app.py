@@ -1,3 +1,5 @@
+import threading,time,gzip
+from datetime import datetime,timezone
 import os,json,sqlite3,csv,io,sys,webbrowser,hashlib,uuid,zipfile,shutil
 from pathlib import Path,PurePosixPath
 from http.server import ThreadingHTTPServer,BaseHTTPRequestHandler
@@ -9,11 +11,36 @@ UPLOADS=DATA/'uploads';UPLOADS.mkdir(exist_ok=True)
 THUMBS=DATA/'thumbnails';THUMBS.mkdir(exist_ok=True)
 MYSQL=os.environ.get('DB_ENGINE','sqlite')=='mysql'
 PORT=int(os.environ.get('PORT','8765'))
+ACTOR=threading.local()
+STATE_LOCK=threading.RLock()
+WRITE_LOCK=threading.Lock()
+MEDIA_LOCKS=[threading.Lock() for _ in range(64)]
+STATE_CACHE={'data':None,'expires':0}
+def invalidate_state():
+    with STATE_LOCK:STATE_CACHE.update(data=None,expires=0)
+def cached_snapshot():
+    with STATE_LOCK:
+        if STATE_CACHE['data'] is None or time.monotonic()>STATE_CACHE['expires']:
+            c=connect()
+            try:
+                if not MYSQL:c.execute('BEGIN')
+                STATE_CACHE.update(data=snapshot(c),expires=time.monotonic()+2)
+            finally:c.close()
+        return STATE_CACHE['data']
+def commit_write(c,handler):
+    actor=getattr(ACTOR,'username',None) or 'system'
+    execute(c,'INSERT INTO audit_events (actor,action,created_at) VALUES (?,?,?)',(actor,urlparse(handler.path).path,datetime.now(timezone.utc).isoformat(timespec='microseconds')))
+    c.commit();invalidate_state()
+class ConflictError(ValueError):pass
+class CatalogServer(ThreadingHTTPServer):
+    request_queue_size=256
+    daemon_threads=True
+
 def connect():
     if MYSQL:
         import pymysql
         return pymysql.connect(host=os.environ.get('DB_HOST','127.0.0.1'),port=int(os.environ.get('DB_PORT','3306')),user=os.environ.get('DB_USER','aoi'),password=os.environ['DB_PASSWORD'],database=os.environ.get('DB_NAME','aoi_catalog'),charset='utf8mb4',cursorclass=pymysql.cursors.DictCursor,autocommit=False)
-    c=sqlite3.connect(DATA/'aoi.db',timeout=30);c.row_factory=sqlite3.Row;c.execute('PRAGMA foreign_keys=ON');return c
+    c=sqlite3.connect(DATA/'aoi.db',timeout=30);c.row_factory=sqlite3.Row;c.execute('PRAGMA foreign_keys=ON');c.execute('PRAGMA busy_timeout=30000');c.execute('PRAGMA synchronous=FULL');return c
 def execute(c,sql,args=()):
     cur=c.cursor();cur.execute(sql.replace('?', '%s') if MYSQL else sql,args);return cur
 def rows(c,t):return [dict(x) for x in execute(c,f'SELECT * FROM `{t}` ORDER BY id').fetchall()]
@@ -72,6 +99,12 @@ def validate(c,t,r,exclude=None):
             if out.get(field) is not None and out[field]>100:raise ValueError('检出率和良率须在 0–100 之间')
     return out
 def save(c,t,r,rid=None):
+    r=dict(r)
+    existing=execute(c,f'SELECT * FROM `{t}` WHERE id=?',(rid or r.get('id'),)).fetchone() if rid or r.get('id') else None
+    stamps=('created_by','created_at','updated_by','updated_at')
+    for key in stamps:r.pop(key,None)
+    now=datetime.now(timezone.utc).isoformat(timespec='microseconds');actor=getattr(ACTOR,'username',None) or 'system'
+
     if t=='videos' and rid:
         old=execute(c,'SELECT image_id FROM videos WHERE id=?',(rid,)).fetchone()
         if old:r={**dict(old),**r}
@@ -79,6 +112,8 @@ def save(c,t,r,rid=None):
         old=execute(c,'SELECT project_id,result,miss_rate FROM model_tests WHERE id=?',(rid,)).fetchone()
         if old:r={**dict(old),**r}
     r=validate(c,t,r,rid)
+    unchanged=existing and all(existing[k]==v for k,v in r.items() if k not in stamps)
+    r.update(created_by=existing['created_by'] if existing else actor,created_at=existing['created_at'] if existing else now,updated_by=existing['updated_by'] if unchanged else actor,updated_at=existing['updated_at'] if unchanged else now)
     if rid:
         r.pop('id',None)
         q=execute(c,f'UPDATE `{t}` SET '+','.join('`'+k+'`=?' for k in r)+' WHERE id=?',list(r.values())+[rid])
@@ -94,6 +129,7 @@ def seed(c):
 def initialize():
     c=connect()
     try:
+        if not MYSQL:execute(c,'PRAGMA journal_mode=WAL')
         pending_indexes=[]
         for s in ddl(MYSQL).split(';'):
             if not s.strip() or 'CREATE DATABASE' in s or s.strip().startswith('USE '):continue
@@ -124,6 +160,12 @@ def initialize():
             execute(c,'DROP TABLE videos');execute(c,'ALTER TABLE videos_updated RENAME TO videos')
         # Infer only unique project associations; ambiguous legacy videos need manual assignment.
         execute(c,'UPDATE videos SET project_id=(SELECT MIN(pa.project_id) FROM images i JOIN project_assets pa ON pa.asset_id=i.asset_id WHERE i.id=videos.image_id HAVING COUNT(DISTINCT pa.project_id)=1) WHERE project_id IS NULL AND image_id IS NOT NULL')
+        for item in T:
+            columns=[x['Field'] for x in execute(c,'SHOW COLUMNS FROM `'+item['name']+'`').fetchall()] if MYSQL else [x['name'] for x in execute(c,'PRAGMA table_info(`'+item['name']+'`)').fetchall()]
+            for field in ('created_by','created_at','updated_by','updated_at'):
+                if field not in columns:execute(c,'ALTER TABLE `'+item['name']+'` ADD COLUMN '+field+(' VARCHAR(191)' if MYSQL else ' TEXT'))
+        audit_pk='BIGINT PRIMARY KEY AUTO_INCREMENT' if MYSQL else 'INTEGER PRIMARY KEY AUTOINCREMENT'
+        execute(c,f'CREATE TABLE IF NOT EXISTS audit_events (id {audit_pk},actor VARCHAR(191) NOT NULL,action VARCHAR(191) NOT NULL,created_at VARCHAR(191) NOT NULL)')
         for statement in pending_indexes:execute(c,statement)
         import auth
         auth.initialize(c,execute,MYSQL)
@@ -162,17 +204,25 @@ def image_info(path):
         return dict(width=im.width,height=im.height,channels=len(im.getbands()))
 
 class Handler(BaseHTTPRequestHandler):
+    def setup(self):
+        super().setup();self.connection.settimeout(120)
     def identity(self,c):
         import auth
         return auth.identity(c,execute,self.headers.get('Cookie',''))
     def require(self,c,admin=False):
         user=self.identity(c)
+        if user:ACTOR.username=user['username']
         if not user:raise PermissionError('请先登录后再录入')
         if admin and user['role']!='admin':raise PermissionError('仅管理员可以执行此操作')
         return user
     def reply(self,obj,status=200,ctype='application/json; charset=utf-8'):
         b=obj if isinstance(obj,bytes) else (json.dumps(obj,ensure_ascii=False).encode() if ctype.startswith('application/json') else obj.encode())
-        self.send_response(status);self.send_header('Content-Type',ctype);self.send_header('Content-Length',str(len(b)));self.send_header('X-Content-Type-Options','nosniff');self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(b)
+        if len(b)>1024 and 'gzip' in self.headers.get('Accept-Encoding',''):
+            b=gzip.compress(b,compresslevel=3);encoded=True
+        else:encoded=False
+        self.send_response(status)
+        if encoded:self.send_header('Content-Encoding','gzip')
+        self.send_header('Vary','Accept-Encoding');self.send_header('Content-Type',ctype);self.send_header('Content-Length',str(len(b)));self.send_header('X-Content-Type-Options','nosniff');self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(b)
     def do_GET(self):
         p=urlparse(self.path);c=None
         try:
@@ -213,28 +263,39 @@ class Handler(BaseHTTPRequestHandler):
                     with path.open('rb') as f:shutil.copyfileobj(f,self.wfile)
                     return
                 if a['asset_type']!='image' or mode not in ('thumb','view'):raise ValueError('资源不是可预览图片')
-                cache=THUMBS/(str(aid)+'-'+str(path.stat().st_mtime_ns)+'.jpg')
-                if mode=='thumb' and cache.exists():self.reply(cache.read_bytes(),ctype='image/jpeg');return
-                with Image.open(path) as im:
-                    # Keep pixel orientation and size consistent with the actual industrial source image.
-                    im.seek(0)
-                    if mode=='thumb':
-                        im.thumbnail((480,360));im=im.convert('RGB');out=io.BytesIO();im.save(out,format='JPEG',quality=85);cache.write_bytes(out.getvalue());self.reply(out.getvalue(),ctype='image/jpeg')
-                    else:
-                        out=io.BytesIO()
-                        if im.mode not in ('1','L','LA','RGB','RGBA','I;16','I'):im=im.convert('RGB')
-                        im.save(out,format='PNG');self.reply(out.getvalue(),ctype='image/png')
-                return
+                c.close();c=None
+                with MEDIA_LOCKS[aid%len(MEDIA_LOCKS)]:
+                    cache=THUMBS/(str(aid)+'-'+str(path.stat().st_mtime_ns)+'.jpg')
+                    if mode=='thumb' and cache.exists():self.reply(cache.read_bytes(),ctype='image/jpeg');return
+                    with Image.open(path) as im:
+                        # Keep pixel orientation and size consistent with the actual industrial source image.
+                        im.seek(0)
+                        if mode=='thumb':
+                            im.thumbnail((480,360));im=im.convert('RGB');out=io.BytesIO();im.save(out,format='JPEG',quality=85);temp=cache.with_name(uuid.uuid4().hex+'.tmp');temp.write_bytes(out.getvalue());temp.replace(cache);self.reply(out.getvalue(),ctype='image/jpeg')
+                        else:
+                            out=io.BytesIO()
+                            if im.mode not in ('1','L','LA','RGB','RGBA','I;16','I'):im=im.convert('RGB')
+                            im.save(out,format='PNG');self.reply(out.getvalue(),ctype='image/png')
+                    return
             if p.path=='/api/auth/users':
                 c=connect();self.require(c,True);self.reply([dict(x) for x in execute(c,'SELECT id,username,role FROM app_users ORDER BY id').fetchall()]);return
+            if p.path=='/api/records':
+                q=parse_qs(p.query);table=q.get('table',['images'])[0]
+                if table not in TABLES:raise ValueError('未知表')
+                page=max(1,int(q.get('page',['1'])[0]));size=min(200,max(1,int(q.get('page_size',['50'])[0])))
+                c=connect();total=execute(c,f'SELECT COUNT(*) AS n FROM `{table}`').fetchone()['n']
+                data=[dict(r) for r in execute(c,f'SELECT * FROM `{table}` ORDER BY id DESC LIMIT ? OFFSET ?',(size,(page-1)*size)).fetchall()]
+                self.reply(dict(data=data,total=total,page=page,page_size=size));return
+            if p.path=='/api/audit':
+                c=connect();self.require(c,True);limit=min(100,max(1,int(parse_qs(p.query).get('limit',['50'])[0])));self.reply([dict(r) for r in execute(c,'SELECT * FROM audit_events ORDER BY id DESC LIMIT ?',(limit,)).fetchall()]);return
             if p.path=='/api/state':
-                c=connect();self.reply(dict(schema=T,data=snapshot(c),engine='MySQL' if MYSQL else 'SQLite',version='1.3',auth=self.identity(c)));return
+                c=connect();self.reply(dict(schema=T,data=cached_snapshot(),engine='MySQL' if MYSQL else 'SQLite',version='1.3',auth=self.identity(c)));return
             if p.path=='/api/sql':
                 c=connect();self.require(c,True);self.reply(mysql_data(c) if parse_qs(p.query).get('data')==['1'] else ddl(True),ctype='text/plain; charset=utf-8');return
             if p.path in ('/','/app.js','/style.css'):
                 f=ROOT/'static'/({'/':'index.html'}.get(p.path,p.path[1:]));self.reply(f.read_bytes(),ctype={'/':'text/html; charset=utf-8','/app.js':'text/javascript; charset=utf-8','/style.css':'text/css; charset=utf-8'}[p.path]);return
             self.reply({'error':'Not found'},404)
-        except Exception as e:self.reply({'error':str(e)},403 if isinstance(e,PermissionError) else 400)
+        except Exception as e:self.reply({'error':str(e)},403 if isinstance(e,PermissionError) else 409 if isinstance(e,ConflictError) else 400)
         finally:
             if c:c.close()
     def do_POST(self):
@@ -243,27 +304,27 @@ class Handler(BaseHTTPRequestHandler):
         if origin and origin not in ('http://'+self.headers.get('Host',''),'https://'+self.headers.get('Host','')):
             self.reply({'error':'跨来源写入已拒绝'},403);return
         if self.headers.get('X-AOI-Client')!='local-v1':self.reply({'error':'缺少本地客户端标识'},403);return
-        c=None;created=[];renamed=[]
+        ACTOR.username=None
+        c=None;created=[];renamed=[];write_locked=False
         try:
+            self.connection.settimeout(120)
             n=int(self.headers.get('Content-Length','0'))
             if n>1024*1024*1024:raise ValueError('单次上传上限 1 GB')
             p=urlparse(self.path);c=connect()
             if p.path.startswith('/api/auth/'):
                 import auth
                 payload=json.loads(self.rfile.read(n) or b'{}')
+                WRITE_LOCK.acquire();write_locked=True;c.rollback()
                 result,cookie=auth.handle(c,execute,self,p.path,payload)
-                c.commit()
+                commit_write(c,self)
                 body=json.dumps(result,ensure_ascii=False).encode()
                 self.send_response(200)
                 if cookie:self.send_header('Set-Cookie',cookie)
-                self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
+                self.send_header('Cache-Control','no-store');self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
             self.require(c,p.path in ('/api/delete','/api/import','/api/seed','/api/model-test-delete','/api/model-test-file-delete'))
             if p.path=='/api/upload':
                 q=parse_qs(p.query);name=safe_filename(q.get('name',['upload.bin'])[0])
-                if q.get('kind')==['agreement_new']:
-                    record=json.loads(q.get('record',['{}'])[0])
-                    agreement_id=save(c,'technical_agreements',record)
-                    q['kind']=['agreement'];q['agreement_id']=[str(agreement_id)]
+                if q.get('kind')==['agreement_new'] and n>256*1024*1024:raise ValueError('协议附件单文件最多 256 MB')
                 if q.get('kind')==['agreement']:
                     if n>256*1024*1024:raise ValueError('协议附件单文件最多 256 MB')
                     if not execute(c,'SELECT id FROM technical_agreements WHERE id=?',(int(q.get('agreement_id',['0'])[0]),)).fetchone():raise ValueError('请先保存并选择技术协议，再上传附件')
@@ -278,13 +339,17 @@ class Handler(BaseHTTPRequestHandler):
                         b=self.rfile.read(min(remain,1024*1024))
                         if not b:raise ValueError('上传不完整')
                         out.write(b);h.update(b);remain-=len(b)
+                WRITE_LOCK.acquire();write_locked=True;c.rollback()
+                if q.get('kind')==['agreement_new']:
+                    agreement_id=save(c,'technical_agreements',json.loads(q.get('record',['{}'])[0]))
+                    q['kind']=['agreement'];q['agreement_id']=[str(agreement_id)]
                 if q.get('kind')==['video']:
                     if dest.suffix.lower() not in ('.mp4','.webm','.mov','.avi','.mkv','.m4v'):raise ValueError('请选择视频文件')
                     if n==0:raise ValueError('视频文件为空')
                     project_id=int(q.get('project_id',['0'])[0])
                     if not execute(c,'SELECT id FROM projects WHERE id=?',(project_id,)).fetchone():raise ValueError('请选择有效的绑定项目')
                     vid=save(c,'videos',dict(project_id=project_id,name=q.get('title',[Path(name).stem])[0],file_name=name,relative_path=dest.name,file_size=n))
-                    c.commit();self.reply(dict(ok=True,id=vid));return
+                    commit_write(c,self);self.reply(dict(ok=True,id=vid));return
                 loc=execute(c,'SELECT id FROM storage_locations WHERE name=?',('本地上传',)).fetchone()
                 lid=loc['id'] if loc else save(c,'storage_locations',dict(name='本地上传',root_path=str(UPLOADS)))
                 ext=dest.suffix.lower();kind='image' if ext in ('.png','.bmp','.jpg','.jpeg','.tif','.tiff','.webp') else 'archive' if ext=='.zip' else 'other'
@@ -327,8 +392,9 @@ class Handler(BaseHTTPRequestHandler):
                             save(c,'asset_relations',dict(source_asset_id=aid,target_asset_id=mid,relation_type='contains',member_path=mp));links(mid)
                             if mk=='image':save(c,'images',dict(asset_id=mid,quality_label='unknown',annotation_status='unlabeled'))
                             count+=1
-                c.commit();self.reply(dict(ok=True,asset_id=aid,members=count,agreement_id=int(q['agreement_id'][0]) if agreement else None));return
+                commit_write(c,self);self.reply(dict(ok=True,asset_id=aid,members=count,agreement_id=int(q['agreement_id'][0]) if agreement else None));return
             payload=json.loads(self.rfile.read(n) or b'{}')
+            WRITE_LOCK.acquire();write_locked=True;c.rollback()
             if p.path=='/api/bind' and payload.get('remove'):self.require(c,True)
             if p.path in ('/api/model-test-file-rename','/api/model-test-file-delete'):
                 item=execute(c,'SELECT asset_id FROM model_test_files WHERE id=?',(int(payload['file_id']),)).fetchone()
@@ -340,7 +406,7 @@ class Handler(BaseHTTPRequestHandler):
                     name=safe_filename(safe_filename(payload['stem'])+path.suffix)
                     dest=UPLOADS/(uuid.uuid4().hex+'_'+name)
                     path.rename(dest);renamed.append((path,dest))
-                    execute(c,'UPDATE assets SET file_name=?,relative_path=? WHERE id=?',(name,dest.name,a['id']))
+                    execute(c,'UPDATE assets SET file_name=?,relative_path=?,updated_by=?,updated_at=? WHERE id=?',(name,dest.name,getattr(ACTOR,'username',None) or 'system',datetime.now(timezone.utc).isoformat(timespec='microseconds'),a['id']))
                     result=dict(ok=True,name=name)
                 else:
                     path=(UPLOADS/(a['relative_path'] or '')).resolve()
@@ -379,7 +445,7 @@ class Handler(BaseHTTPRequestHandler):
                 if Path(name).suffix.lower()!=path.suffix.lower():raise ValueError('重命名时请保留原图片扩展名')
                 dest=UPLOADS/(uuid.uuid4().hex+'_'+name)
                 path.rename(dest);renamed.append((path,dest))
-                execute(c,'UPDATE assets SET file_name=?,relative_path=? WHERE id=?',(name,dest.name,a['id']))
+                execute(c,'UPDATE assets SET file_name=?,relative_path=?,updated_by=?,updated_at=? WHERE id=?',(name,dest.name,getattr(ACTOR,'username',None) or 'system',datetime.now(timezone.utc).isoformat(timespec='microseconds'),a['id']))
                 result=dict(ok=True,name=name)
             elif p.path=='/api/local-engineering':
                 path=str(payload.get('local_path','')).strip().strip('"')
@@ -419,6 +485,9 @@ class Handler(BaseHTTPRequestHandler):
             elif p.path=='/api/save':
                 t=payload['table']
                 if t not in TABLES:raise ValueError('未知表')
+                if payload.get('id') and 'expected_updated_at' in payload:
+                    current=execute(c,f'SELECT updated_at FROM `{t}` WHERE id=?',(payload['id'],)).fetchone()
+                    if not current or current['updated_at']!=payload['expected_updated_at']:raise ConflictError('记录已被其他人修改，请刷新后重新编辑，避免覆盖他人的内容')
                 rid=save(c,t,payload['record'],payload.get('id'));result=dict(ok=True,id=rid)
             elif p.path=='/api/delete':
                 t=payload['table']
@@ -436,14 +505,15 @@ class Handler(BaseHTTPRequestHandler):
                         save(c,t['name'],record,rid if exists else None);total+=1
                 result=dict(ok=True,count=total)
             else:raise ValueError('未知接口')
-            c.commit();self.reply(result)
+            commit_write(c,self);self.reply(result)
         except Exception as e:
             if c:c.rollback()
             for old,new in reversed(renamed):new.rename(old)
             for f in created:f.unlink(missing_ok=True)
-            self.reply({'error':str(e)},403 if isinstance(e,PermissionError) else 400)
+            self.reply({'error':str(e)},403 if isinstance(e,PermissionError) else 409 if isinstance(e,ConflictError) else 400)
         finally:
             if c:c.close()
+            if write_locked:WRITE_LOCK.release()
 def main():
     import argparse
     parser=argparse.ArgumentParser()
@@ -452,7 +522,7 @@ def main():
     parser.add_argument('--no-browser',action='store_true')
     args,_=parser.parse_known_args()
     initialize();host=args.host;port=args.port
-    server=ThreadingHTTPServer((host,port),Handler)
+    server=CatalogServer((host,port),Handler)
     print(f'AOI Catalog: http://127.0.0.1:{port} | {"MySQL" if MYSQL else "SQLite"}',flush=True)
     if not args.no_browser:webbrowser.open(f'http://127.0.0.1:{port}')
     try:server.serve_forever()

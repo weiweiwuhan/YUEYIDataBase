@@ -1,5 +1,5 @@
 """Password authentication; hashed server-side sessions never enter public exports."""
-import hashlib,hmac,secrets,time
+import hashlib,hmac,secrets,time,threading,re
 from http.cookies import SimpleCookie
 
 def password_hash(password,salt=None):
@@ -30,16 +30,18 @@ def handle(c,run,handler,path,payload):
     cookie='aoi_session={}; Path=/; HttpOnly; SameSite=Strict; Max-Age={}'+secure
     if path=='/api/auth/login':
         # Persistent per-process throttling prevents rapid password guessing.
-        now=time.monotonic();key=handler.client_address[0]
-        attempts=ATTEMPTS.setdefault(key,[]);attempts[:]=[t for t in attempts if now-t<300]
-        if len(attempts)>=10:raise PermissionError('登录尝试过多，请 5 分钟后重试')
-        attempts.append(now)
+        now=time.monotonic();key=(handler.client_address[0],str(payload.get('username','')))
+        with ATTEMPT_LOCK:
+            attempts=ATTEMPTS.setdefault(key,[]);attempts[:]=[t for t in attempts if now-t<300]
+            if len(attempts)>=10:raise PermissionError('登录尝试过多，请 5 分钟后重试')
+            attempts.append(now)
         row=run(c,'SELECT * FROM app_users WHERE username=?',(str(payload.get('username','')),)).fetchone()
         stored=row['password_hash'] if row else DUMMY
         try:valid=hmac.compare_digest(password_hash(payload.get('password',''),stored.split(':')[0]),stored)
         except ValueError:valid=False
         if not row or not valid:raise PermissionError('账号或密码错误')
-        attempts.clear();token=secrets.token_urlsafe(32)
+        with ATTEMPT_LOCK:attempts.clear()
+        token=secrets.token_urlsafe(32)
         run(c,'DELETE FROM app_sessions WHERE expires<=?',(int(time.time()),))
         run(c,'INSERT INTO app_sessions (token_hash,user_id,expires) VALUES (?,?,?)',(hashlib.sha256(token.encode()).hexdigest(),row['id'],int(time.time())+28800))
         return {'ok':True},cookie.format(token,28800)
@@ -48,6 +50,8 @@ def handle(c,run,handler,path,payload):
         run(c,'DELETE FROM app_sessions WHERE token_hash=?',(hashlib.sha256(token.encode()).hexdigest(),))
         return {'ok':True},cookie.format('',0)
     handler.require(c,True)
+    if path=='/api/auth/users-batch':
+        return {'ok':True,'accounts':create_accounts(c,run,int(payload.get('count',50)),str(payload.get('prefix','member')))},None
     if path=='/api/auth/users':
         username=str(payload.get('username','')).strip();role=payload.get('role')
         if not username or len(username)>100 or role not in ('editor','admin'):raise ValueError('请填写账号并选择录入员或管理员')
@@ -60,5 +64,19 @@ def handle(c,run,handler,path,payload):
         return {'ok':True},None
     raise ValueError('未知账号接口')
 
+def create_accounts(c,run,count=50,prefix='member'):
+    if not 1<=count<=100 or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,30}',prefix):raise ValueError('数量须为 1–100，前缀须为英文字母、数字或下划线')
+    existing={row['username'] for row in run(c,'SELECT username FROM app_users').fetchall()}
+    entries=[];index=1
+    while len(entries)<count:
+        username=f'{prefix}{index:03d}';index+=1
+        if username in existing:continue
+        password=secrets.token_urlsafe(18)
+        entries.append((username,password,password_hash(password)))
+    for username,password,hashed in entries:
+        run(c,'INSERT INTO app_users (username,password_hash,role) VALUES (?,?,?)',(username,hashed,'editor'))
+    return [{'username':username,'password':password,'role':'editor'} for username,password,hashed in entries]
+
+ATTEMPT_LOCK=threading.Lock()
 ATTEMPTS={}
 DUMMY=password_hash(secrets.token_urlsafe(32))
