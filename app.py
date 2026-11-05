@@ -66,8 +66,14 @@ def validate(c,t,r,exclude=None):
             q=execute(c,'SELECT asset_type FROM assets WHERE id=?',(out['source_asset_id'],)).fetchone()
             if not q or q['asset_type']!='archive':raise ValueError('contains 来源必须是压缩包')
             if not out.get('member_path'):raise ValueError('请填写包内路径')
+    if t=='model_tests':
+        for field in ('detection_rate','miss_rate'):
+            if out.get(field) is not None and out[field]>100:raise ValueError('检出率和漏检率须在 0–100 之间')
     return out
 def save(c,t,r,rid=None):
+    if t=='model_tests' and rid:
+        old=execute(c,'SELECT project_id,result FROM model_tests WHERE id=?',(rid,)).fetchone()
+        if old:r={**dict(old),**r}
     r=validate(c,t,r,rid)
     if rid:
         r.pop('id',None)
@@ -84,14 +90,23 @@ def seed(c):
 def initialize():
     c=connect()
     try:
+        pending_indexes=[]
         for s in ddl(MYSQL).split(';'):
             if not s.strip() or 'CREATE DATABASE' in s or s.strip().startswith('USE '):continue
+            if s.strip().startswith('CREATE INDEX'):
+                pending_indexes.append(s);continue
             execute(c,s)
         fields=[x['Field'] for x in execute(c,'SHOW COLUMNS FROM engineering_projects').fetchall()] if MYSQL else [x['name'] for x in execute(c,'PRAGMA table_info(engineering_projects)').fetchall()]
         if 'image_count' not in fields:execute(c,'ALTER TABLE engineering_projects ADD COLUMN image_count '+('BIGINT' if MYSQL else 'INTEGER'))
         if 'local_path' not in fields:execute(c,'ALTER TABLE engineering_projects ADD COLUMN local_path '+('VARCHAR(1024)' if MYSQL else 'TEXT'))
         agreement_fields=[x['Field'] for x in execute(c,'SHOW COLUMNS FROM technical_agreements').fetchall()] if MYSQL else [x['name'] for x in execute(c,'PRAGMA table_info(technical_agreements)').fetchall()]
         if 'extracted_text' not in agreement_fields:execute(c,'ALTER TABLE technical_agreements ADD COLUMN extracted_text '+('LONGTEXT' if MYSQL else 'TEXT'))
+        model_fields=[x['Field'] for x in execute(c,'SHOW COLUMNS FROM model_tests').fetchall()] if MYSQL else [x['name'] for x in execute(c,'PRAGMA table_info(model_tests)').fetchall()]
+        for field,kind in [('product_id','BIGINT' if MYSQL else 'INTEGER'),('test_count','BIGINT' if MYSQL else 'INTEGER'),('detection_rate','DOUBLE' if MYSQL else 'REAL'),('miss_rate','DOUBLE' if MYSQL else 'REAL')]:
+            if field not in model_fields:
+                suffix=(' NULL, ADD CONSTRAINT fk_model_tests_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT ON UPDATE RESTRICT' if MYSQL else ' REFERENCES products(id) ON DELETE RESTRICT ON UPDATE RESTRICT') if field=='product_id' else ''
+                execute(c,f'ALTER TABLE model_tests ADD COLUMN {field} {kind}{suffix}')
+        for statement in pending_indexes:execute(c,statement)
         import auth
         auth.initialize(c,execute,MYSQL)
         c.commit()

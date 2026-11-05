@@ -271,9 +271,19 @@ CREATE TABLE IF NOT EXISTS `model_tests` (
   `test_date` VARCHAR(191),
   `result` VARCHAR(191),
   `prompt` VARCHAR(1024),
+  `product_id` BIGINT,
+  `test_count` BIGINT,
+  `detection_rate` DOUBLE,
+  `miss_rate` DOUBLE,
   `remark` VARCHAR(1024),
   FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  CHECK (`result` IN ('待评价', '效果好', '一般', '效果差'))
+  CHECK (`result` IN ('待评价', '效果好', '一般', '效果差')),
+  FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`test_count` IS NULL OR `test_count` >= 0),
+  CHECK (`detection_rate` IS NULL OR `detection_rate` <= 100),
+  CHECK (`detection_rate` IS NULL OR `detection_rate` >= 0),
+  CHECK (`miss_rate` IS NULL OR `miss_rate` <= 100),
+  CHECK (`miss_rate` IS NULL OR `miss_rate` >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `model_test_files` (

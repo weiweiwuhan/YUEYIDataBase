@@ -80,7 +80,17 @@ with tempfile.TemporaryDirectory() as tmp:
         except urllib.error.HTTPError:pass
         assert req('/api/state')['data']==old and list(Path(tmp,'uploads').iterdir())==files
         # Model test records store original/effect images without inflating production image totals.
-        test_id=req('/api/save',{'table':'model_tests','record':{'name':'缺陷识别测试','model_name':'model-A','model_version':'v1','result':'效果好','remark':'效果图人工复核'}})['id']
+        test_id=req('/api/save',{'table':'model_tests','record':{'name':'缺陷识别测试','model_name':'model-A','model_version':'v1','result':'效果好','product_id':1,'test_count':200,'detection_rate':98.5,'miss_rate':1.5,'prompt':'Windows + GPU','remark':'效果图人工复核'}})['id']
+        test_record=next(r for r in req('/api/state')['data']['model_tests'] if r['id']==test_id)
+        assert test_record['product_id']==1 and test_record['test_count']==200 and test_record['detection_rate']==98.5
+        for changes in ({'test_count':-1},{'test_count':1.5},{'detection_rate':101},{'miss_rate':-1},{'product_id':999999}):
+            try:req('/api/save',{'table':'model_tests','id':test_id,'record':{**test_record,**changes}});assert False
+            except urllib.error.HTTPError:pass
+        edit_record={k:v for k,v in test_record.items() if k not in ('project_id','result')}
+        edit_record.update(test_count=0,detection_rate=0,miss_rate=100)
+        req('/api/save',{'table':'model_tests','id':test_id,'record':edit_record})
+        updated=next(r for r in req('/api/state')['data']['model_tests'] if r['id']==test_id)
+        assert updated['test_count']==0 and updated['detection_rate']==0 and updated['miss_rate']==100 and updated['result']=='效果好'
         from PIL import Image
         test_png=io.BytesIO();Image.new('RGB',(32,24),(25,80,150)).save(test_png,format='PNG')
         production_count=len(req('/api/state')['data']['images'])
