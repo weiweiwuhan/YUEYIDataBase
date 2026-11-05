@@ -66,11 +66,15 @@ def validate(c,t,r,exclude=None):
             q=execute(c,'SELECT asset_type FROM assets WHERE id=?',(out['source_asset_id'],)).fetchone()
             if not q or q['asset_type']!='archive':raise ValueError('contains 来源必须是压缩包')
             if not out.get('member_path'):raise ValueError('请填写包内路径')
+    if t=='videos' and not out.get('project_id') and not out.get('image_id'):raise ValueError('请选择绑定项目')
     if t=='model_tests':
         for field in ('detection_rate','miss_rate','yield_rate'):
             if out.get(field) is not None and out[field]>100:raise ValueError('检出率和良率须在 0–100 之间')
     return out
 def save(c,t,r,rid=None):
+    if t=='videos' and rid:
+        old=execute(c,'SELECT image_id FROM videos WHERE id=?',(rid,)).fetchone()
+        if old:r={**dict(old),**r}
     if t=='model_tests' and rid:
         old=execute(c,'SELECT project_id,result,miss_rate FROM model_tests WHERE id=?',(rid,)).fetchone()
         if old:r={**dict(old),**r}
@@ -106,6 +110,20 @@ def initialize():
             if field not in model_fields:
                 suffix=(' NULL, ADD CONSTRAINT fk_model_tests_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT ON UPDATE RESTRICT' if MYSQL else ' REFERENCES products(id) ON DELETE RESTRICT ON UPDATE RESTRICT') if field=='product_id' else ''
                 execute(c,f'ALTER TABLE model_tests ADD COLUMN {field} {kind}{suffix}')
+        video_fields=[x['Field'] for x in execute(c,'SHOW COLUMNS FROM videos').fetchall()] if MYSQL else [x['name'] for x in execute(c,'PRAGMA table_info(videos)').fetchall()]
+        if 'project_id' not in video_fields:
+            execute(c,'ALTER TABLE videos ADD COLUMN project_id '+('BIGINT NULL, ADD CONSTRAINT fk_videos_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT ON UPDATE RESTRICT' if MYSQL else 'INTEGER REFERENCES projects(id) ON DELETE RESTRICT ON UPDATE RESTRICT'))
+        if MYSQL:
+            image_field=next(x for x in execute(c,'SHOW COLUMNS FROM videos').fetchall() if x['Field']=='image_id')
+            if image_field['Null']=='NO':execute(c,'ALTER TABLE videos MODIFY COLUMN image_id BIGINT NULL')
+        elif any(x['name']=='image_id' and x['notnull'] for x in execute(c,'PRAGMA table_info(videos)').fetchall()):
+            statement=next(s for s in ddl(False).split(';') if 'CREATE TABLE IF NOT EXISTS `videos`' in s)
+            execute(c,statement.replace('`videos`','`videos_updated`',1))
+            cols=','.join('`'+x['name']+'`' for x in execute(c,'PRAGMA table_info(videos)').fetchall())
+            execute(c,f'INSERT INTO videos_updated ({cols}) SELECT {cols} FROM videos')
+            execute(c,'DROP TABLE videos');execute(c,'ALTER TABLE videos_updated RENAME TO videos')
+        # Infer only unique project associations; ambiguous legacy videos need manual assignment.
+        execute(c,'UPDATE videos SET project_id=(SELECT MIN(pa.project_id) FROM images i JOIN project_assets pa ON pa.asset_id=i.asset_id WHERE i.id=videos.image_id HAVING COUNT(DISTINCT pa.project_id)=1) WHERE project_id IS NULL AND image_id IS NOT NULL')
         for statement in pending_indexes:execute(c,statement)
         import auth
         auth.initialize(c,execute,MYSQL)
@@ -242,6 +260,10 @@ class Handler(BaseHTTPRequestHandler):
             self.require(c,p.path in ('/api/delete','/api/import','/api/seed','/api/model-test-delete'))
             if p.path=='/api/upload':
                 q=parse_qs(p.query);name=safe_filename(q.get('name',['upload.bin'])[0])
+                if q.get('kind')==['agreement_new']:
+                    record=json.loads(q.get('record',['{}'])[0])
+                    agreement_id=save(c,'technical_agreements',record)
+                    q['kind']=['agreement'];q['agreement_id']=[str(agreement_id)]
                 if q.get('kind')==['agreement']:
                     if n>256*1024*1024:raise ValueError('协议附件单文件最多 256 MB')
                     if not execute(c,'SELECT id FROM technical_agreements WHERE id=?',(int(q.get('agreement_id',['0'])[0]),)).fetchone():raise ValueError('请先保存并选择技术协议，再上传附件')
@@ -259,7 +281,9 @@ class Handler(BaseHTTPRequestHandler):
                 if q.get('kind')==['video']:
                     if dest.suffix.lower() not in ('.mp4','.webm','.mov','.avi','.mkv','.m4v'):raise ValueError('请选择视频文件')
                     if n==0:raise ValueError('视频文件为空')
-                    vid=save(c,'videos',dict(image_id=int(q.get('image_id',['0'])[0]),name=q.get('title',[Path(name).stem])[0],file_name=name,relative_path=dest.name,file_size=n))
+                    project_id=int(q.get('project_id',['0'])[0])
+                    if not execute(c,'SELECT id FROM projects WHERE id=?',(project_id,)).fetchone():raise ValueError('请选择有效的绑定项目')
+                    vid=save(c,'videos',dict(project_id=project_id,name=q.get('title',[Path(name).stem])[0],file_name=name,relative_path=dest.name,file_size=n))
                     c.commit();self.reply(dict(ok=True,id=vid));return
                 loc=execute(c,'SELECT id FROM storage_locations WHERE name=?',('本地上传',)).fetchone()
                 lid=loc['id'] if loc else save(c,'storage_locations',dict(name='本地上传',root_path=str(UPLOADS)))
@@ -303,7 +327,7 @@ class Handler(BaseHTTPRequestHandler):
                             save(c,'asset_relations',dict(source_asset_id=aid,target_asset_id=mid,relation_type='contains',member_path=mp));links(mid)
                             if mk=='image':save(c,'images',dict(asset_id=mid,quality_label='unknown',annotation_status='unlabeled'))
                             count+=1
-                c.commit();self.reply(dict(ok=True,asset_id=aid,members=count));return
+                c.commit();self.reply(dict(ok=True,asset_id=aid,members=count,agreement_id=int(q['agreement_id'][0]) if agreement else None));return
             payload=json.loads(self.rfile.read(n) or b'{}')
             if p.path=='/api/bind' and payload.get('remove'):self.require(c,True)
             if p.path=='/api/model-test-delete':

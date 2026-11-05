@@ -6,11 +6,11 @@ const context=vm.createContext({document:{querySelector:el},setTimeout:()=>{},Mu
 let source=fs.readFileSync(__dirname+'/static/app.js','utf8');
 source=source.replace(/;refresh\(\)\.catch\(e=>\{.*?\}\);/,';');
 vm.runInContext(source,context);
-const sample=JSON.parse(fs.readFileSync(__dirname+'/sample.json','utf8'));sample.videos=[{id:1,image_id:1,name:'设备演示录像',file_name:'demo.mp4'}];
+const sample=JSON.parse(fs.readFileSync(__dirname+'/sample.json','utf8'));sample.videos=[{id:1,project_id:1,name:'设备演示录像',file_name:'demo.mp4'}];
 vm.runInContext('S='+JSON.stringify({data:sample})+';',context);
 const run=code=>vm.runInContext(code,context);
 assert.equal(run('matchingImageResults({}).length'),sample.images.length);
-assert.equal(run("matchingImageResults({q:'设备演示录像'}).length"),1);
+assert.equal(run("matchingImageResults({q:'设备演示录像'}).length"),sample.images.filter(i=>sample.project_assets.some(p=>p.project_id===1&&p.asset_id===i.asset_id)).length);
 assert.equal(run("matchingImageResults({q:'不存在的工程关键词'}).length"),0);
 const en=sample.engineering_projects[0];
 run("S.data.engineering_projects[0].name='唯一工程检索词'");
@@ -60,3 +60,14 @@ assert(!el('#model-test-list').innerHTML.includes('漏检率'));
 assert(context.lastDialog.includes('name="yield_rate"'));
 assert(!context.lastDialog.includes('name="miss_rate"'));
 console.log('PASS: MySQL navigation removed and yield rate replaces miss rate in model test views');
+
+run("S.data.technical_agreements=[];S.data.projects=[{id:1,name:'项目A'}];agreementRecordEditor()");
+assert(context.lastDialog.includes('data-agreement-file'));
+assert(context.lastDialog.includes('上传并保存协议记录'));
+assert(!context.lastDialog.includes('data-agreement-backup'));
+console.log('PASS: agreement new-record form combines metadata with local file upload');
+
+run('S.data.images=[];videoUpload()');
+assert(context.lastDialog.includes('name="project_id"'));
+assert(!context.lastDialog.includes('name="image_id"'));
+console.log('PASS: video new-record upload binds a project without requiring any images');

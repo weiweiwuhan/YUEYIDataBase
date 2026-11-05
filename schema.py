@@ -23,7 +23,7 @@ add('image_defects','图片—缺陷','关系','仅登记已确认的逐图缺�
 add('asset_defects','资料包—缺陷','关系','表示包级包含这些缺陷，不会自动标为每张图片的缺陷。',[col('asset_id','资料资源','int',True,'assets'),col('defect_type_id','缺陷','int',True,'defect_types'),col('remark','说明')],unique=[['asset_id','defect_type_id']])
 add('asset_relations','资源关联','关系','contains: 压缩包→成员；paired: 工程→图片；annotation: 图片→标注；version: 旧→新。',[col('source_asset_id','来源资源','int',True,'assets'),col('target_asset_id','目标资源','int',True,'assets'),col('relation_type','关系类型',required=True,choices=['contains','paired','annotation','version']),col('member_path','压缩包内路径')],unique=[['source_asset_id','target_asset_id','relation_type']])
 add('image_embeddings','图像特征登记','扩展','预留向量索引登记；本版本不生成特征、不提供以图搜图。',[col('image_id','图片','int',True,'images'),col('model_name','模型',required=True),col('model_version','模型版本',required=True),col('dimension','特征维度','int',True),col('vector_key','向量索引键',required=True)],unique=[['image_id','model_name','model_version'],['vector_key']])
-add('videos','视频资料','主表','视频上传到本机，每条视频绑定一张产品图片；一张图片可绑定多个视频。',[col('image_id','绑定产品图片','int',True,'images'),col('name','视频名称',required=True),col('file_name','原文件名',required=True),col('relative_path','视频存储路径',required=True),col('file_size','大小 bytes','int'),col('remark','备注')])
+add('videos','视频资料','主表','视频上传到本机，每条视频绑定一个项目。旧图片关联保留兼容。',[col('image_id','历史图片关联','int',False,'images'),col('project_id','绑定项目','int',False,'projects'),col('name','视频名称',required=True),col('file_name','原文件名',required=True),col('relative_path','视频存储路径',required=True),col('file_size','大小 bytes','int'),col('remark','备注')])
 add('technical_agreements','技术协议','主表','每份协议属于一个项目；通过协议—产品关联多个产品。',[col('project_id','项目','int',True,'projects'),col('code','协议编号',required=True),col('name','协议名称',required=True),col('signed_date','签订日期'),col('requirements','技术要求'),col('extracted_text','技术协议信息读取'),col('remark','备注')],unique=[['code']])
 add('agreement_products','协议—产品','关系','同一份技术协议可以对应多个产品。',[col('agreement_id','技术协议','int',True,'technical_agreements'),col('product_id','产品','int',True,'products')],unique=[['agreement_id','product_id']])
 add('after_sales','售后经验','主表','绑定项目与产品，积累故障原因、处理过程及预防经验。',[col('project_id','项目','int',True,'projects'),col('product_id','产品','int',True,'products'),col('name','问题标题',required=True),col('service_date','售后日期'),col('status','处理状态',required=True,choices=['待处理','处理中','已解决']),col('symptom','问题现象'),col('cause','原因分析'),col('resolution','处理方案'),col('experience','经验与预防措施'),col('remark','备注')])
@@ -31,6 +31,8 @@ add('agreement_files','技术协议附件','关系','协议附件原文件保存
 add('model_tests','大模型测试记录','主表','记录人工执行的模型测试及效果，不自动调用外部模型。',[col('name','测试名称',required=True),col('project_id','关联项目','int',ref='projects'),col('model_name','模型名称',required=True),col('model_version','模型版本'),col('test_date','测试日期'),col('result','效果评价',choices=['待评价','效果好','一般','效果差']),col('prompt','测试环境备注'),col('product_id','关联产品','int',ref='products'),col('test_count','测试产品总数','int'),col('detection_rate','检出率 %','real'),col('miss_rate','历史漏检率 %','real'),col('yield_rate','良率 %','real'),col('remark','效果说明')])
 add('model_test_files','模型测试图片','关系','每次测试可保存多张原图和效果图。',[col('test_id','测试记录','int',True,'model_tests'),col('asset_id','图片文件','int',True,'assets'),col('role','图片用途',required=True,choices=['input','result'])],unique=[['asset_id']])
 TABLES={t['name']:t for t in T}
+for field in TABLES['videos']['fields']:
+    if field['name']=='image_id':field['hidden']=True
 for field in TABLES['model_tests']['fields']:
     if field['name'] in ('project_id','result','miss_rate'):field['hidden']=True
 def ddl(mysql=False):

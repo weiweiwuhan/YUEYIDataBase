@@ -1,6 +1,7 @@
 """Integration checks, isolated data directory; never touches the user's data."""
 import tempfile,os,sys,subprocess,time,json,urllib.request,urllib.error,io,zipfile,sqlite3,http.cookiejar
 import auth
+from urllib.parse import urlencode
 from pathlib import Path
 ROOT=Path(__file__).resolve().parent
 with tempfile.TemporaryDirectory() as tmp:
@@ -35,6 +36,19 @@ with tempfile.TemporaryDirectory() as tmp:
         req('/api/save',{'table':'process_types','record':{'name':'热处理'}})
         req('/api/save',{'table':'products','id':1,'record':{**s['data']['products'][0],'remark':'后来补充'}})
         assert req('/api/state')['data']['products'][0]['remark']=='后来补充'
+        # Creating agreement metadata and its first attachment is atomic.
+        agreement_record={'project_id':1,'code':'TA-UPLOAD','name':'新增即上传协议'}
+        q=urlencode({'kind':'agreement_new','name':'agreement.pdf','record':json.dumps(agreement_record)})
+        combined=req('/api/upload?'+q,raw=b'%PDF-backup-only')
+        combined_state=req('/api/state')['data']
+        assert any(a['id']==combined['agreement_id'] and a['code']=='TA-UPLOAD' for a in combined_state['technical_agreements'])
+        assert any(f['agreement_id']==combined['agreement_id'] and f['asset_id']==combined['asset_id'] for f in combined_state['agreement_files'])
+        assert opener.open('http://127.0.0.1:18765/api/media?id='+str(combined['asset_id'])+'&mode=original').read()==b'%PDF-backup-only'
+        before_combined=req('/api/state')['data'];before_disk=set(Path(tmp,'uploads').iterdir())
+        bad_q=urlencode({'kind':'agreement_new','name':'invalid.pdf','record':json.dumps({**agreement_record,'project_id':999999,'code':'INVALID'})})
+        try:req('/api/upload?'+bad_q,raw=b'bad');assert False
+        except urllib.error.HTTPError:pass
+        assert req('/api/state')['data']==before_combined and set(Path(tmp,'uploads').iterdir())==before_disk
         agreement=req('/api/save',{'table':'technical_agreements','record':{'project_id':1,'code':'TA-1','name':'技术协议','requirements':'要求'*400}})['id']
         attachment=req('/api/upload?kind=agreement&agreement_id='+str(agreement)+'&name=spec.pdf',raw=b'%PDF-test-bytes')['asset_id']
         assert opener.open('http://127.0.0.1:18765/api/media?id='+str(attachment)+'&mode=original').read()==b'%PDF-test-bytes'
@@ -183,15 +197,17 @@ with tempfile.TemporaryDirectory() as tmp:
         req('/api/bag-defects',{'asset_id':result['asset_id'],'defect_ids':[1,2,3]})
         assert len([r for r in req('/api/state')['data']['asset_defects'] if r['asset_id']==result['asset_id']])==3
         video=b'video-transport-test-fixture'
-        vid=req('/api/upload?name=sample.mp4&kind=video&image_id='+str(im['id']),raw=video)['id']
+        vid=req('/api/upload?name=sample.mp4&kind=video&project_id=1',raw=video)['id']
         url='http://127.0.0.1:18765/api/video?id='+str(vid)
+        video_record=next(v for v in req('/api/state')['data']['videos'] if v['id']==vid)
+        assert video_record['project_id']==1 and video_record['image_id'] is None
         assert opener.open(url).read()==video
         response=opener.open(urllib.request.Request(url,headers={'Range':'bytes=2-8'}))
         assert response.status==206 and response.read()==video[2:9]
         response=opener.open(urllib.request.Request(url,headers={'Range':'bytes=-5'}))
         assert response.read()==video[-5:]
         before=req('/api/state')['data'];files=list(Path(tmp,'uploads').iterdir())
-        try:req('/api/upload?name=bad.mp4&kind=video&image_id=999999',raw=video);assert False
+        try:req('/api/upload?name=bad.mp4&kind=video&project_id=999999',raw=video);assert False
         except urllib.error.HTTPError:pass
         assert before==req('/api/state')['data'] and files==list(Path(tmp,'uploads').iterdir())
         old=req('/api/state')['data']
