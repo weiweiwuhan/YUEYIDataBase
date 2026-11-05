@@ -275,6 +275,7 @@ CREATE TABLE IF NOT EXISTS `model_tests` (
   `test_count` BIGINT,
   `detection_rate` DOUBLE,
   `miss_rate` DOUBLE,
+  `yield_rate` DOUBLE,
   `remark` VARCHAR(1024),
   FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CHECK (`result` IN ('待评价', '效果好', '一般', '效果差')),
@@ -283,7 +284,9 @@ CREATE TABLE IF NOT EXISTS `model_tests` (
   CHECK (`detection_rate` IS NULL OR `detection_rate` <= 100),
   CHECK (`detection_rate` IS NULL OR `detection_rate` >= 0),
   CHECK (`miss_rate` IS NULL OR `miss_rate` <= 100),
-  CHECK (`miss_rate` IS NULL OR `miss_rate` >= 0)
+  CHECK (`miss_rate` IS NULL OR `miss_rate` >= 0),
+  CHECK (`yield_rate` IS NULL OR `yield_rate` <= 100),
+  CHECK (`yield_rate` IS NULL OR `yield_rate` >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `model_test_files` (

@@ -67,12 +67,12 @@ def validate(c,t,r,exclude=None):
             if not q or q['asset_type']!='archive':raise ValueError('contains 来源必须是压缩包')
             if not out.get('member_path'):raise ValueError('请填写包内路径')
     if t=='model_tests':
-        for field in ('detection_rate','miss_rate'):
-            if out.get(field) is not None and out[field]>100:raise ValueError('检出率和漏检率须在 0–100 之间')
+        for field in ('detection_rate','miss_rate','yield_rate'):
+            if out.get(field) is not None and out[field]>100:raise ValueError('检出率和良率须在 0–100 之间')
     return out
 def save(c,t,r,rid=None):
     if t=='model_tests' and rid:
-        old=execute(c,'SELECT project_id,result FROM model_tests WHERE id=?',(rid,)).fetchone()
+        old=execute(c,'SELECT project_id,result,miss_rate FROM model_tests WHERE id=?',(rid,)).fetchone()
         if old:r={**dict(old),**r}
     r=validate(c,t,r,rid)
     if rid:
@@ -102,7 +102,7 @@ def initialize():
         agreement_fields=[x['Field'] for x in execute(c,'SHOW COLUMNS FROM technical_agreements').fetchall()] if MYSQL else [x['name'] for x in execute(c,'PRAGMA table_info(technical_agreements)').fetchall()]
         if 'extracted_text' not in agreement_fields:execute(c,'ALTER TABLE technical_agreements ADD COLUMN extracted_text '+('LONGTEXT' if MYSQL else 'TEXT'))
         model_fields=[x['Field'] for x in execute(c,'SHOW COLUMNS FROM model_tests').fetchall()] if MYSQL else [x['name'] for x in execute(c,'PRAGMA table_info(model_tests)').fetchall()]
-        for field,kind in [('product_id','BIGINT' if MYSQL else 'INTEGER'),('test_count','BIGINT' if MYSQL else 'INTEGER'),('detection_rate','DOUBLE' if MYSQL else 'REAL'),('miss_rate','DOUBLE' if MYSQL else 'REAL')]:
+        for field,kind in [('product_id','BIGINT' if MYSQL else 'INTEGER'),('test_count','BIGINT' if MYSQL else 'INTEGER'),('detection_rate','DOUBLE' if MYSQL else 'REAL'),('miss_rate','DOUBLE' if MYSQL else 'REAL'),('yield_rate','DOUBLE' if MYSQL else 'REAL')]:
             if field not in model_fields:
                 suffix=(' NULL, ADD CONSTRAINT fk_model_tests_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT ON UPDATE RESTRICT' if MYSQL else ' REFERENCES products(id) ON DELETE RESTRICT ON UPDATE RESTRICT') if field=='product_id' else ''
                 execute(c,f'ALTER TABLE model_tests ADD COLUMN {field} {kind}{suffix}')
@@ -212,7 +212,7 @@ class Handler(BaseHTTPRequestHandler):
             if p.path=='/api/state':
                 c=connect();self.reply(dict(schema=T,data=snapshot(c),engine='MySQL' if MYSQL else 'SQLite',version='1.3',auth=self.identity(c)));return
             if p.path=='/api/sql':
-                c=connect();self.reply(mysql_data(c) if parse_qs(p.query).get('data')==['1'] else ddl(True),ctype='text/plain; charset=utf-8');return
+                c=connect();self.require(c,True);self.reply(mysql_data(c) if parse_qs(p.query).get('data')==['1'] else ddl(True),ctype='text/plain; charset=utf-8');return
             if p.path in ('/','/app.js','/style.css'):
                 f=ROOT/'static'/({'/':'index.html'}.get(p.path,p.path[1:]));self.reply(f.read_bytes(),ctype={'/':'text/html; charset=utf-8','/app.js':'text/javascript; charset=utf-8','/style.css':'text/css; charset=utf-8'}[p.path]);return
             self.reply({'error':'Not found'},404)

@@ -43,7 +43,7 @@ assert(!context.lastDialog.includes('name="asset_id"'));
 assert.equal(run('pages.modeltests[1]'),'大模型测试记录');
 console.log('PASS: engineering edit opens explicit image count form without hidden asset/software inputs; model-test navigation registered');
 
-run("S.auth=null;S.data.model_tests=[{id:1,name:'模型测试',model_name:'M',product_id:1,test_count:200,detection_rate:98.5,miss_rate:1.5,prompt:'GPU'}];S.data.model_test_files=[{test_id:1,asset_id:S.data.assets[0].id,role:'input'}];modeltests()");
+run("S.auth=null;S.data.model_tests=[{id:1,name:'模型测试',model_name:'M',product_id:1,test_count:200,detection_rate:98.5,yield_rate:96.5,prompt:'GPU'}];S.data.model_test_files=[{test_id:1,asset_id:S.data.assets[0].id,role:'input'}];modeltests()");
 assert(el('#model-test-list').innerHTML.includes('检出率：98.5%'));
 assert(el('#model-test-list').innerHTML.includes('data-model-preview='));
 assert(!el('#model-test-list').innerHTML.includes('<figure><a'));
@@ -53,3 +53,10 @@ assert(!context.lastDialog.includes('name="project_id"'));
 assert(context.lastDialog.includes('测试环境备注'));
 assert(context.lastDialog.includes('name="test_count"'));
 console.log('PASS: model test product/metrics form and click-to-preview image markup');
+
+assert(!run("'sql' in pages"));
+assert(el('#model-test-list').innerHTML.includes('良率：96.5%'));
+assert(!el('#model-test-list').innerHTML.includes('漏检率'));
+assert(context.lastDialog.includes('name="yield_rate"'));
+assert(!context.lastDialog.includes('name="miss_rate"'));
+console.log('PASS: MySQL navigation removed and yield rate replaces miss rate in model test views');
