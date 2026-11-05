@@ -257,7 +257,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 if cookie:self.send_header('Set-Cookie',cookie)
                 self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
-            self.require(c,p.path in ('/api/delete','/api/import','/api/seed','/api/model-test-delete'))
+            self.require(c,p.path in ('/api/delete','/api/import','/api/seed','/api/model-test-delete','/api/model-test-file-delete'))
             if p.path=='/api/upload':
                 q=parse_qs(p.query);name=safe_filename(q.get('name',['upload.bin'])[0])
                 if q.get('kind')==['agreement_new']:
@@ -330,7 +330,29 @@ class Handler(BaseHTTPRequestHandler):
                 c.commit();self.reply(dict(ok=True,asset_id=aid,members=count,agreement_id=int(q['agreement_id'][0]) if agreement else None));return
             payload=json.loads(self.rfile.read(n) or b'{}')
             if p.path=='/api/bind' and payload.get('remove'):self.require(c,True)
-            if p.path=='/api/model-test-delete':
+            if p.path in ('/api/model-test-file-rename','/api/model-test-file-delete'):
+                item=execute(c,'SELECT asset_id FROM model_test_files WHERE id=?',(int(payload['file_id']),)).fetchone()
+                if not item:raise ValueError('测试图片不存在或已移除')
+                a=execute(c,'SELECT * FROM assets WHERE id=?',(item['asset_id'],)).fetchone()
+                if not a or a['asset_type']!='image':raise ValueError('测试图片资源无效')
+                if p.path=='/api/model-test-file-rename':
+                    _,path=local_asset(c,a['id'])
+                    name=safe_filename(safe_filename(payload['stem'])+path.suffix)
+                    dest=UPLOADS/(uuid.uuid4().hex+'_'+name)
+                    path.rename(dest);renamed.append((path,dest))
+                    execute(c,'UPDATE assets SET file_name=?,relative_path=? WHERE id=?',(name,dest.name,a['id']))
+                    result=dict(ok=True,name=name)
+                else:
+                    path=(UPLOADS/(a['relative_path'] or '')).resolve()
+                    if not path.is_relative_to(UPLOADS.resolve()):raise ValueError('图片路径无效')
+                    if path.is_file():
+                        trash=DATA/'trash'/'model_tests';trash.mkdir(parents=True,exist_ok=True)
+                        dest=trash/(uuid.uuid4().hex+'_'+path.name)
+                        path.rename(dest);renamed.append((path,dest))
+                    execute(c,'DELETE FROM model_test_files WHERE id=?',(int(payload['file_id']),))
+                    execute(c,'DELETE FROM assets WHERE id=?',(a['id'],))
+                    result=dict(ok=True)
+            elif p.path=='/api/model-test-delete':
                 test_id=int(payload['id'])
                 execute(c,'DELETE FROM model_test_files WHERE test_id=?',(test_id,))
                 execute(c,'DELETE FROM model_tests WHERE id=?',(test_id,));result=dict(ok=True)

@@ -115,16 +115,47 @@ with tempfile.TemporaryDirectory() as tmp:
         model_state=req('/api/state')['data']
         assert len(model_state['images'])==production_count
         assert len([f for f in model_state['model_test_files'] if f['test_id']==test_id])==2
+        test_file=next(f for f in model_state['model_test_files'] if f['test_id']==test_id)
+        old_asset=next(a for a in model_state['assets'] if a['id']==test_file['asset_id'])
+        old_test_path=Path(tmp,'uploads',old_asset['relative_path'])
+        for badstem in ('../bad','CON','bad/name'):
+            try:req('/api/model-test-file-rename',{'file_id':test_file['id'],'stem':badstem});assert False
+            except urllib.error.HTTPError:pass
+        assert old_test_path.exists()
         before_files=set(Path(tmp,'uploads').iterdir())
         try:req('/api/upload?kind=modeltest&test_id='+str(test_id)+'&role=result&name=invalid.png',raw=b'invalid');assert False
         except urllib.error.HTTPError:pass
         assert before_files==set(Path(tmp,'uploads').iterdir())
         req('/api/auth/logout',{})
+        denied('/api/model-test-file-rename',{'file_id':test_file['id'],'stem':'blocked'})
+        denied('/api/model-test-file-delete',{'file_id':test_file['id']})
         denied('/api/upload?kind=modeltest&test_id='+str(test_id)+'&role=result&name=blocked.png',raw=test_png.getvalue())
         req('/api/auth/login',{'username':'editor','password':'test-editor-password'})
         denied('/api/model-test-delete',{'id':test_id})
+        denied('/api/model-test-file-delete',{'file_id':test_file['id']})
+        req('/api/model-test-file-rename',{'file_id':test_file['id'],'stem':'测试重命名'})
+        renamed_asset=next(a for a in req('/api/state')['data']['assets'] if a['id']==test_file['asset_id'])
+        assert renamed_asset['file_name']=='测试重命名.png' and not old_test_path.exists()
+        renamed_test_path=Path(tmp,'uploads',renamed_asset['relative_path'])
+        assert renamed_test_path.read_bytes()==test_png.getvalue()
+        assert opener.open('http://127.0.0.1:18765/api/media?id='+str(test_file['asset_id'])+'&mode=view').status==200
         req('/api/auth/logout',{})
         req('/api/auth/login',{'username':'admin','password':'test-admin-password'})
+        # A referenced file must restore its disk path and association on transaction failure.
+        protected_link=req('/api/save',{'table':'asset_products','record':{'asset_id':test_file['asset_id'],'product_id':1}})['id']
+        try:req('/api/model-test-file-delete',{'file_id':test_file['id']});assert False
+        except urllib.error.HTTPError:pass
+        assert renamed_test_path.exists()
+        assert any(f['id']==test_file['id'] for f in req('/api/state')['data']['model_test_files'])
+        req('/api/delete',{'table':'asset_products','id':protected_link})
+        req('/api/model-test-file-delete',{'file_id':test_file['id']})
+        after_delete=req('/api/state')['data']
+        assert not any(f['id']==test_file['id'] for f in after_delete['model_test_files'])
+        assert not any(a['id']==test_file['asset_id'] for a in after_delete['assets'])
+        assert any(t['id']==test_id for t in after_delete['model_tests'])
+        assert len([f for f in after_delete['model_test_files'] if f['test_id']==test_id])==1
+        assert not renamed_test_path.exists()
+        assert any(p.read_bytes()==test_png.getvalue() for p in Path(tmp,'trash','model_tests').iterdir())
         req('/api/model-test-delete',{'id':test_id})
         assert not any(f['test_id']==test_id for f in req('/api/state')['data']['model_test_files'])
         # Real local image decode, thumbnail, full-resolution preview and exact engineering binding.

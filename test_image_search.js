@@ -71,3 +71,13 @@ run('S.data.images=[];videoUpload()');
 assert(context.lastDialog.includes('name="project_id"'));
 assert(!context.lastDialog.includes('name="image_id"'));
 console.log('PASS: video new-record upload binds a project without requiring any images');
+
+run("S.data.model_test_files[0].id=77;S.auth={role:'editor'};modeltests()");
+assert(el('#model-test-list').innerHTML.includes('data-model-file-rename="77"'));
+assert(!el('#model-test-list').innerHTML.includes('data-model-file-delete='));
+run("S.auth={role:'admin'};modeltests()");
+assert(el('#model-test-list').innerHTML.includes('data-model-file-delete="77"'));
+run("S.auth=null;modeltests()");
+assert(!el('#model-test-list').innerHTML.includes('data-model-file-rename='));
+assert(!el('#model-test-list').innerHTML.includes('data-model-file-delete='));
+console.log('PASS: model image rename/delete buttons follow editor/admin/guest roles');
