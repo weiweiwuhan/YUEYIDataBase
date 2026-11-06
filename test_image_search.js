@@ -85,3 +85,10 @@ console.log('PASS: model image rename/delete buttons follow editor/admin/guest r
 assert.equal(run('pages.offline[1]'),'大模型离线测试');assert(el('#content').innerHTML.includes('offline-shortcut'));
 
 assert.equal(run('pages.guide[1]'),'AI智能问答助手');
+
+run("S.data.model_tests[0].light_source='红色环形光';S.data.model_tests[0].camera='CCD-5MP';S.data.model_tests[0].lens='25mm';S.data.model_tests[0].working_distance_mm=0;S.data.model_tests[0].product_spec='M6';modelTestEditor(1)");
+for(const field of ['light_source','camera','lens','working_distance_mm','product_spec'])assert(context.lastDialog.includes('name="'+field+'"'));
+run('modeltests()');assert(el('#model-test-list').innerHTML.includes('0 mm'));assert(el('#model-test-list').innerHTML.includes('CCD-5MP'));
+el('#model-test-filter').value='红色环形光';el('#model-test-filter').oninput();assert(el('#model-test-list').innerHTML.includes('模型测试'));
+el('#model-test-filter').value='不存在的相机';el('#model-test-filter').oninput();assert(el('#model-test-list').innerHTML.includes('暂无测试记录'));
+console.log('PASS: model test hardware fields, zero distance display and equipment search');

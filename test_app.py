@@ -106,16 +106,18 @@ with tempfile.TemporaryDirectory() as tmp:
         except urllib.error.HTTPError:pass
         assert req('/api/state')['data']==old and list(Path(tmp,'uploads').iterdir())==files
         # Model test records store original/effect images without inflating production image totals.
-        test_id=req('/api/save',{'table':'model_tests','record':{'name':'缺陷识别测试','model_name':'model-A','model_version':'v1','result':'效果好','product_id':1,'test_count':200,'detection_rate':98.5,'yield_rate':96.5,'miss_rate':1.5,'prompt':'Windows + GPU','remark':'效果图人工复核'}})['id']
+        test_id=req('/api/save',{'table':'model_tests','record':{'name':'缺陷识别测试','model_name':'model-A','model_version':'v1','result':'效果好','product_id':1,'test_count':200,'detection_rate':98.5,'yield_rate':96.5,'miss_rate':1.5,'prompt':'Windows + GPU','light_source':'红色环形光','camera':'CCD-5MP','lens':'25mm定焦','working_distance_mm':120.5,'product_spec':'M6×20 / 碳钢','remark':'效果图人工复核'}})['id']
         test_record=next(r for r in req('/api/state')['data']['model_tests'] if r['id']==test_id)
         assert test_record['product_id']==1 and test_record['test_count']==200 and test_record['detection_rate']==98.5
-        for changes in ({'test_count':-1},{'test_count':1.5},{'detection_rate':101},{'yield_rate':-1},{'yield_rate':100.1},{'product_id':999999}):
+        assert test_record['working_distance_mm']==120.5 and test_record['product_spec']=='M6×20 / 碳钢' and test_record['camera']=='CCD-5MP'
+        for changes in ({'working_distance_mm':-1},{'working_distance_mm':'nan'},{'test_count':-1},{'test_count':1.5},{'detection_rate':101},{'yield_rate':-1},{'yield_rate':100.1},{'product_id':999999}):
             try:req('/api/save',{'table':'model_tests','id':test_id,'record':{**test_record,**changes}});assert False
             except urllib.error.HTTPError:pass
         edit_record={k:v for k,v in test_record.items() if k not in ('project_id','result','miss_rate')}
-        edit_record.update(test_count=0,detection_rate=0,yield_rate=100)
+        edit_record.update(test_count=0,detection_rate=0,yield_rate=100,working_distance_mm=0,camera='CCD-12MP')
         req('/api/save',{'table':'model_tests','id':test_id,'record':edit_record})
         updated=next(r for r in req('/api/state')['data']['model_tests'] if r['id']==test_id)
+        assert updated['working_distance_mm']==0 and updated['camera']=='CCD-12MP' and updated['light_source']=='红色环形光'
         assert updated['test_count']==0 and updated['detection_rate']==0 and updated['yield_rate']==100 and updated['miss_rate']==1.5 and updated['result']=='效果好'
         from PIL import Image
         test_png=io.BytesIO();Image.new('RGB',(32,24),(25,80,150)).save(test_png,format='PNG')

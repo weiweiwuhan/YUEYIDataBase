@@ -85,7 +85,7 @@ def validate(c,t,r,exclude=None):
                 v=float(v)
                 if not math.isfinite(v) or v<0:raise ValueError(f['label']+'须为非负有限数值')
             else:
-                v=str(v);maxlen=1024 if n in ('prompt','requirements','symptom','cause','resolution','experience','remark','relative_path','member_path','root_path','thumbnail_path','local_path') else 191
+                v=str(v);maxlen=1024 if n in ('product_spec','prompt','requirements','symptom','cause','resolution','experience','remark','relative_path','member_path','root_path','thumbnail_path','local_path') else 191
                 if n=='extracted_text':maxlen=100000
                 if t=='after_sales' and n in ('symptom','cause','resolution','experience','remark'):maxlen=20000
                 if len(v)>maxlen:raise ValueError(f['label']+'内容过长')
@@ -161,7 +161,7 @@ def initialize():
         agreement_fields=[x['Field'] for x in execute(c,'SHOW COLUMNS FROM technical_agreements').fetchall()] if MYSQL else [x['name'] for x in execute(c,'PRAGMA table_info(technical_agreements)').fetchall()]
         if 'extracted_text' not in agreement_fields:execute(c,'ALTER TABLE technical_agreements ADD COLUMN extracted_text '+('LONGTEXT' if MYSQL else 'TEXT'))
         model_fields=[x['Field'] for x in execute(c,'SHOW COLUMNS FROM model_tests').fetchall()] if MYSQL else [x['name'] for x in execute(c,'PRAGMA table_info(model_tests)').fetchall()]
-        for field,kind in [('product_id','BIGINT' if MYSQL else 'INTEGER'),('test_count','BIGINT' if MYSQL else 'INTEGER'),('detection_rate','DOUBLE' if MYSQL else 'REAL'),('miss_rate','DOUBLE' if MYSQL else 'REAL'),('yield_rate','DOUBLE' if MYSQL else 'REAL')]:
+        for field,kind in [('product_id','BIGINT' if MYSQL else 'INTEGER'),('test_count','BIGINT' if MYSQL else 'INTEGER'),('detection_rate','DOUBLE' if MYSQL else 'REAL'),('miss_rate','DOUBLE' if MYSQL else 'REAL'),('yield_rate','DOUBLE' if MYSQL else 'REAL'),('light_source','VARCHAR(191)' if MYSQL else 'TEXT'),('camera','VARCHAR(191)' if MYSQL else 'TEXT'),('lens','VARCHAR(191)' if MYSQL else 'TEXT'),('working_distance_mm','DOUBLE' if MYSQL else 'REAL'),('product_spec','VARCHAR(1024)' if MYSQL else 'TEXT')]:
             if field not in model_fields:
                 suffix=(' NULL, ADD CONSTRAINT fk_model_tests_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT ON UPDATE RESTRICT' if MYSQL else ' REFERENCES products(id) ON DELETE RESTRICT ON UPDATE RESTRICT') if field=='product_id' else ''
                 execute(c,f'ALTER TABLE model_tests ADD COLUMN {field} {kind}{suffix}')
@@ -340,7 +340,7 @@ class Handler(BaseHTTPRequestHandler):
             if p.path=='/api/version':
                 self.reply(json.loads((ROOT/'version.json').read_text('utf-8')));return
             if p.path=='/api/state':
-                c=connect();self.reply(dict(schema=T,data=cached_snapshot(),engine='MySQL' if MYSQL else 'SQLite',version='1.5.0',release=json.loads((ROOT/'version.json').read_text('utf-8')),auth=self.identity(c)));return
+                c=connect();self.reply(dict(schema=T,data=cached_snapshot(),engine='MySQL' if MYSQL else 'SQLite',version='1.5.1',release=json.loads((ROOT/'version.json').read_text('utf-8')),auth=self.identity(c)));return
             if p.path=='/api/sql':
                 c=connect();self.require(c,True);self.reply(mysql_data(c) if parse_qs(p.query).get('data')==['1'] else ddl(True),ctype='text/plain; charset=utf-8');return
             if p.path in ('/','/app.js','/style.css','/offline.js','/offline.css'):

@@ -28,7 +28,7 @@ add('technical_agreements','技术协议','主表','每份协议属于一个项�
 add('agreement_products','协议—产品','关系','同一份技术协议可以对应多个产品。',[col('agreement_id','技术协议','int',True,'technical_agreements'),col('product_id','产品','int',True,'products')],unique=[['agreement_id','product_id']])
 add('after_sales','售后经验','主表','绑定项目与产品，积累故障原因、处理过程及预防经验。',[col('project_id','项目','int',True,'projects'),col('product_id','产品','int',True,'products'),col('name','问题标题',required=True),col('service_date','售后日期'),col('status','处理状态',required=True,choices=['待处理','处理中','已解决']),col('symptom','问题现象'),col('cause','原因分析'),col('resolution','处理方案'),col('experience','经验与预防措施'),col('remark','备注')])
 add('agreement_files','技术协议附件','关系','协议附件原文件保存在工程数据目录，可下载。',[col('agreement_id','技术协议','int',True,'technical_agreements'),col('asset_id','附件资源','int',True,'assets')],unique=[['asset_id']])
-add('model_tests','大模型测试记录','主表','记录人工执行的模型测试及效果，不自动调用外部模型。',[col('name','测试名称',required=True),col('project_id','关联项目','int',ref='projects'),col('model_name','模型名称',required=True),col('model_version','模型版本'),col('test_date','测试日期'),col('result','效果评价',choices=['待评价','效果好','一般','效果差']),col('prompt','测试环境备注'),col('product_id','关联产品','int',ref='products'),col('test_count','测试产品总数','int'),col('detection_rate','检出率 %','real'),col('miss_rate','历史漏检率 %','real'),col('yield_rate','良率 %','real'),col('remark','效果说明')])
+add('model_tests','大模型测试记录','主表','记录人工执行的模型测试及效果，不自动调用外部模型。',[col('name','测试名称',required=True),col('project_id','关联项目','int',ref='projects'),col('model_name','模型名称',required=True),col('model_version','模型版本'),col('test_date','测试日期'),col('result','效果评价',choices=['待评价','效果好','一般','效果差']),col('prompt','测试环境备注'),col('product_id','关联产品','int',ref='products'),col('test_count','测试产品总数','int'),col('detection_rate','检出率 %','real'),col('miss_rate','历史漏检率 %','real'),col('yield_rate','良率 %','real'),col('light_source','光源类型'),col('camera','相机型号'),col('lens','镜头型号'),col('working_distance_mm','工作距离 mm','real'),col('product_spec','产品规格'),col('remark','效果说明')])
 add('model_test_files','模型测试图片','关系','每次测试可保存多张原图和效果图。',[col('test_id','测试记录','int',True,'model_tests'),col('asset_id','图片文件','int',True,'assets'),col('role','图片用途',required=True,choices=['input','result'])],unique=[['asset_id']])
 for item in T:
     item['fields'] += [col('created_by','录入作者'),col('created_at','录入时间'),col('updated_by','最后修改人'),col('updated_at','最后修改时间')]
@@ -48,7 +48,7 @@ def ddl(mysql=False):
             n=c['name'];k=c['kind']
             if k=='id': s='BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY' if mysql else 'INTEGER PRIMARY KEY AUTOINCREMENT'
             else:
-                s=({'int':'BIGINT','real':'DOUBLE'}.get(k,'VARCHAR(1024)' if n in ('prompt','requirements','symptom','cause','resolution','experience','remark','relative_path','member_path','root_path','thumbnail_path','local_path') else 'VARCHAR(191)') if mysql else {'int':'INTEGER','real':'REAL'}.get(k,'TEXT'))
+                s=({'int':'BIGINT','real':'DOUBLE'}.get(k,'VARCHAR(1024)' if n in ('product_spec','prompt','requirements','symptom','cause','resolution','experience','remark','relative_path','member_path','root_path','thumbnail_path','local_path') else 'VARCHAR(191)') if mysql else {'int':'INTEGER','real':'REAL'}.get(k,'TEXT'))
                 if c['required']:s+=' NOT NULL'
             if t['name']=='after_sales' and n in ('symptom','cause','resolution','experience','remark'):s='MEDIUMTEXT' if mysql else 'TEXT'
             if n=='extracted_text':s='LONGTEXT' if mysql else 'TEXT'

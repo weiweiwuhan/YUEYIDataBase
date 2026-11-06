@@ -370,6 +370,11 @@ CREATE TABLE IF NOT EXISTS `model_tests` (
   `detection_rate` DOUBLE,
   `miss_rate` DOUBLE,
   `yield_rate` DOUBLE,
+  `light_source` VARCHAR(191),
+  `camera` VARCHAR(191),
+  `lens` VARCHAR(191),
+  `working_distance_mm` DOUBLE,
+  `product_spec` VARCHAR(1024),
   `remark` VARCHAR(1024),
   `created_by` VARCHAR(191),
   `created_at` VARCHAR(191),
@@ -384,7 +389,8 @@ CREATE TABLE IF NOT EXISTS `model_tests` (
   CHECK (`miss_rate` IS NULL OR `miss_rate` <= 100),
   CHECK (`miss_rate` IS NULL OR `miss_rate` >= 0),
   CHECK (`yield_rate` IS NULL OR `yield_rate` <= 100),
-  CHECK (`yield_rate` IS NULL OR `yield_rate` >= 0)
+  CHECK (`yield_rate` IS NULL OR `yield_rate` >= 0),
+  CHECK (`working_distance_mm` IS NULL OR `working_distance_mm` >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `model_test_files` (
