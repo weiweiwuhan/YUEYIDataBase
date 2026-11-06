@@ -319,7 +319,7 @@ class Handler(BaseHTTPRequestHandler):
             if p.path=='/api/audit':
                 c=connect();self.require(c,True);limit=min(100,max(1,int(parse_qs(p.query).get('limit',['50'])[0])));self.reply([dict(r) for r in execute(c,'SELECT * FROM audit_events ORDER BY id DESC LIMIT ?',(limit,)).fetchall()]);return
             if p.path=='/api/state':
-                c=connect();self.reply(dict(schema=T,data=cached_snapshot(),engine='MySQL' if MYSQL else 'SQLite',version='1.3',auth=self.identity(c)));return
+                c=connect();self.reply(dict(schema=T,data=cached_snapshot(),engine='MySQL' if MYSQL else 'SQLite',version='1.4.1',release=json.loads((ROOT/'version.json').read_text('utf-8')),auth=self.identity(c)));return
             if p.path=='/api/sql':
                 c=connect();self.require(c,True);self.reply(mysql_data(c) if parse_qs(p.query).get('data')==['1'] else ddl(True),ctype='text/plain; charset=utf-8');return
             if p.path in ('/','/app.js','/style.css','/offline.js','/offline.css'):

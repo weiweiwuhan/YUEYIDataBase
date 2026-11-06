@@ -81,3 +81,5 @@ run("S.auth=null;modeltests()");
 assert(!el('#model-test-list').innerHTML.includes('data-model-file-rename='));
 assert(!el('#model-test-list').innerHTML.includes('data-model-file-delete='));
 console.log('PASS: model image rename/delete buttons follow editor/admin/guest roles');
+
+assert.equal(run('pages.offline[1]'),'大模型离线测试');assert(el('#content').innerHTML.includes('offline-shortcut'));
