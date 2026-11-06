@@ -1,0 +1,8 @@
+# Optional only: install in the model's Python environment, not the web server.
+# Select a compatible torch/torchvision CPU or CUDA pair using pytorch.org first.
+torch>=2.6,<3
+torchvision>=0.21,<1
+numpy>=1.26,<3
+Pillow>=10,<13
+safetensors>=0.5,<1
+# Also install the user's local model project's own requirements.

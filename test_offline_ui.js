@@ -1,0 +1,50 @@
+// DOM/API-isolated checks for offline page behavior; no model, browser or real data needed.
+'use strict';
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const nodes=new Map(),requests=[];
+function node(key){if(!nodes.has(key))nodes.set(key,{innerHTML:'',textContent:'',value:'',disabled:false,hidden:false,dataset:{},classList:{toggle(){},add(){},remove(){}},querySelectorAll:()=>[],addEventListener(){}});return nodes.get(key)}
+const query=key=>key==='#offline-root'?(node('#content').innerHTML.includes('id="offline-root"')?node(key):null):node(key);
+const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let modelReply={models:[],configured:false};
+const context=vm.createContext({pages:{},page:'offline',S:{auth:null},clearTimeout(){},setTimeout(){return 1},document:{hidden:false,querySelector:query,querySelectorAll:()=>[],addEventListener(){}},$:query,esc:escape,title:(en,zh,description)=>escape(en+zh+description),FormData:class{constructor(form){this.values=form}get(key){return this.values[key]}},request:async url=>{requests.push(url);if(url==='/api/offline/models')return modelReply;if(url==='/api/offline/jobs')return {jobs:[]};throw Error('Unexpected API request '+url)},console});
+vm.runInContext(fs.readFileSync(__dirname+'/static/offline.js','utf8'),context);
+const run=code=>vm.runInContext(code,context);
+async function main(){
+ assert.equal(run('pages.offline[1]'),'大模型离线测试');
+ assert.equal(run('typeof offlineTesting'),'function');
+ await run('offlineTesting()');
+ assert(node('#content').innerHTML.includes('请先登录'));
+ assert.equal(requests.length,0,'guest view must not request inference APIs');
+ run("S.auth={id:1,username:'tester',role:'editor'}");
+ await run('offlineTesting()');
+ assert(node('#content').innerHTML.includes('id="offline-root"'));
+ assert(node('#offline-model-info').textContent.includes('没有可用模型'));
+ assert.equal(node('#offline-start').disabled,true);
+ assert(node('#offline-model').innerHTML.includes('未配置本地模型'));
+ modelReply={models:[{id:'unavailable',name:'本地模型A',available:false,reason:'本机缺少：checkpoint'}],configured:true};
+ await run('offlineTesting()');
+ assert(node('#offline-model-info').textContent.includes('checkpoint'));
+ assert.equal(node('#offline-start').disabled,true);
+ modelReply={models:[],configured:false,error:'模型配置读取失败'};
+ await run('offlineTesting()');
+ assert(node('#offline-model-info').textContent.includes('模型配置读取失败'));
+ const params=form=>run('offlineParams('+JSON.stringify(form)+')');
+ const base={seg_threshold:'0.06',min_area:'8',alpha:'0.5',smooth_sigma:'1.2',image_threshold:''};
+ assert.equal(params(base).image_threshold,null);
+ assert.equal(params({...base,seg_threshold:'2.4'}).seg_threshold,2.4,'raw response threshold is not capped as a probability');
+ assert.equal(params({...base,seg_threshold:'0',smooth_sigma:'0'}).smooth_sigma,0);
+ for(const changes of [{seg_threshold:'-1'},{alpha:'2'},{min_area:'0'},{min_area:'1.5'},{smooth_sigma:'11'},{image_threshold:'NaN'}])assert.throws(()=>params({...base,...changes}));
+ assert(run('offlineParamFields({seg_threshold:0})').includes('value="0"'));
+ run("offlineUI.files=[];offlineSelectFiles(Array.from({length:17},(_,i)=>({name:'sample-'+i+'.png',size:32*1024*1024})))");
+ assert.equal(run('offlineUI.files.length'),0);
+ assert(node('#offline-message').textContent.includes('512 MB'));
+ run("offlineUI.files=[];offlineSelectFiles([{name:'<unsafe>.png',size:100}])");
+ assert(node('#offline-file-summary').innerHTML.includes('&lt;unsafe&gt;.png'));
+ const before=requests.length;
+ run("offlineUI.activeId='job1';page='home'");await run('offlinePoll()');
+ assert.equal(requests.length,before,'polling must stop after navigating away');
+ run("page='offline';document.hidden=true");await run('offlinePoll()');
+ assert.equal(requests.length,before,'polling must stop in hidden tabs');
+ console.log('PASS: offline navigation/guest view, missing models, safe raw thresholds, batch limits, filename escaping, polling lifecycle');
+}
+main().catch(error=>{console.error(error);process.exitCode=1});

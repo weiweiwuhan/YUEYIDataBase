@@ -11,6 +11,15 @@ UPLOADS=DATA/'uploads';UPLOADS.mkdir(exist_ok=True)
 THUMBS=DATA/'thumbnails';THUMBS.mkdir(exist_ok=True)
 MYSQL=os.environ.get('DB_ENGINE','sqlite')=='mysql'
 PORT=int(os.environ.get('PORT','8765'))
+OFFLINE_ENGINE=None
+OFFLINE_ENGINE_LOCK=threading.Lock()
+def get_offline_engine():
+    global OFFLINE_ENGINE
+    with OFFLINE_ENGINE_LOCK:
+        if OFFLINE_ENGINE is None:
+            from offline_queue import OfflineQueue
+            OFFLINE_ENGINE=OfflineQueue(DATA)
+        return OFFLINE_ENGINE
 ACTOR=threading.local()
 STATE_LOCK=threading.RLock()
 WRITE_LOCK=threading.Lock()
@@ -226,6 +235,27 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         p=urlparse(self.path);c=None
         try:
+            if p.path.startswith('/api/offline/'):
+                c=connect();user=self.require(c);c.close();c=None
+                engine=get_offline_engine();q=parse_qs(p.query)
+                if p.path=='/api/offline/models':self.reply(engine.models());return
+                if p.path=='/api/offline/jobs':self.reply({'job':engine.get(user,q['id'][0])} if q.get('id') else {'jobs':engine.list(user)});return
+                if p.path=='/api/offline/file':
+                    path=engine.file(user,q.get('job_id',[''])[0],q.get('item_id',[''])[0],q.get('kind',['overlay'])[0])
+                    from PIL import Image
+                    with Image.open(path) as im:fmt=im.format;ctype=Image.MIME.get(fmt,'image/png')
+                    if fmt in ('BMP','TIFF'):
+                        with MEDIA_LOCKS[hash(str(path))%len(MEDIA_LOCKS)]:
+                            preview=path.with_name('original-preview.png')
+                            if not preview.exists():
+                                temp=preview.with_name(uuid.uuid4().hex+'.tmp')
+                                with Image.open(path) as source:source.seek(0);source.convert('RGB').save(temp,format='PNG')
+                                temp.replace(preview)
+                            path=preview;ctype='image/png'
+                    self.send_response(200);self.send_header('Content-Type',ctype);self.send_header('Content-Length',str(path.stat().st_size));self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.end_headers()
+                    with path.open('rb') as source:shutil.copyfileobj(source,self.wfile)
+                    return
+                raise ValueError('未知离线测试接口')
             if p.path=='/api/video':
                 import mimetypes,re
                 c=connect();vid=int(parse_qs(p.query).get('id',['0'])[0])
@@ -292,8 +322,8 @@ class Handler(BaseHTTPRequestHandler):
                 c=connect();self.reply(dict(schema=T,data=cached_snapshot(),engine='MySQL' if MYSQL else 'SQLite',version='1.3',auth=self.identity(c)));return
             if p.path=='/api/sql':
                 c=connect();self.require(c,True);self.reply(mysql_data(c) if parse_qs(p.query).get('data')==['1'] else ddl(True),ctype='text/plain; charset=utf-8');return
-            if p.path in ('/','/app.js','/style.css'):
-                f=ROOT/'static'/({'/':'index.html'}.get(p.path,p.path[1:]));self.reply(f.read_bytes(),ctype={'/':'text/html; charset=utf-8','/app.js':'text/javascript; charset=utf-8','/style.css':'text/css; charset=utf-8'}[p.path]);return
+            if p.path in ('/','/app.js','/style.css','/offline.js','/offline.css'):
+                f=ROOT/'static'/({'/':'index.html'}.get(p.path,p.path[1:]));self.reply(f.read_bytes(),ctype={'/':'text/html; charset=utf-8','/app.js':'text/javascript; charset=utf-8','/style.css':'text/css; charset=utf-8','/offline.css':'text/css; charset=utf-8','/offline.js':'text/javascript; charset=utf-8'}[p.path]);return
             self.reply({'error':'Not found'},404)
         except Exception as e:self.reply({'error':str(e)},403 if isinstance(e,PermissionError) else 409 if isinstance(e,ConflictError) else 400)
         finally:
@@ -311,6 +341,18 @@ class Handler(BaseHTTPRequestHandler):
             n=int(self.headers.get('Content-Length','0'))
             if n>1024*1024*1024:raise ValueError('单次上传上限 1 GB')
             p=urlparse(self.path);c=connect()
+            if p.path.startswith('/api/offline/'):
+                user=self.require(c);c.close();c=None
+                engine=get_offline_engine();q=parse_qs(p.query)
+                if p.path=='/api/offline/upload':
+                    self.reply({'item':engine.upload(user,q.get('job_id',[''])[0],q.get('name',[''])[0],self.rfile,n)});return
+                if n>65536:raise ValueError('离线任务参数最多 64 KB')
+                payload=json.loads(self.rfile.read(n) or b'{}')
+                if p.path=='/api/offline/jobs':self.reply({'job':engine.create(user,payload.get('model_id'),payload.get('params',{}))});return
+                if p.path=='/api/offline/submit':self.reply({'job':engine.submit(user,payload.get('job_id'))});return
+                if p.path=='/api/offline/cancel':self.reply({'job':engine.cancel(user,payload.get('job_id'))});return
+                if p.path=='/api/offline/resegment':self.reply({'item':engine.resegment(user,payload.get('job_id'),payload.get('item_id'),payload.get('params',{}))});return
+                raise ValueError('未知离线测试接口')
             if p.path.startswith('/api/auth/'):
                 import auth
                 payload=json.loads(self.rfile.read(n) or b'{}')
@@ -527,5 +569,7 @@ def main():
     if not args.no_browser:webbrowser.open(f'http://127.0.0.1:{port}')
     try:server.serve_forever()
     except KeyboardInterrupt:pass
-    finally:server.server_close()
+    finally:
+        server.server_close()
+        if OFFLINE_ENGINE:OFFLINE_ENGINE.close()
 if __name__=='__main__':main()
