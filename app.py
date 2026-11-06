@@ -11,6 +11,15 @@ UPLOADS=DATA/'uploads';UPLOADS.mkdir(exist_ok=True)
 THUMBS=DATA/'thumbnails';THUMBS.mkdir(exist_ok=True)
 MYSQL=os.environ.get('DB_ENGINE','sqlite')=='mysql'
 PORT=int(os.environ.get('PORT','8765'))
+ASSISTANT_ENGINE=None
+ASSISTANT_ENGINE_LOCK=threading.Lock()
+def get_assistant_engine():
+    global ASSISTANT_ENGINE
+    with ASSISTANT_ENGINE_LOCK:
+        if ASSISTANT_ENGINE is None:
+            from assistant_service import AssistantService
+            ASSISTANT_ENGINE=AssistantService(DATA,connect,execute)
+        return ASSISTANT_ENGINE
 OFFLINE_ENGINE=None
 OFFLINE_ENGINE_LOCK=threading.Lock()
 def get_offline_engine():
@@ -78,6 +87,7 @@ def validate(c,t,r,exclude=None):
             else:
                 v=str(v);maxlen=1024 if n in ('prompt','requirements','symptom','cause','resolution','experience','remark','relative_path','member_path','root_path','thumbnail_path','local_path') else 191
                 if n=='extracted_text':maxlen=100000
+                if t=='after_sales' and n in ('symptom','cause','resolution','experience','remark'):maxlen=20000
                 if len(v)>maxlen:raise ValueError(f['label']+'内容过长')
             if f['choices'] and v not in f['choices']:raise ValueError(f['label']+'选项不合法')
         out[n]=v
@@ -173,6 +183,10 @@ def initialize():
             columns=[x['Field'] for x in execute(c,'SHOW COLUMNS FROM `'+item['name']+'`').fetchall()] if MYSQL else [x['name'] for x in execute(c,'PRAGMA table_info(`'+item['name']+'`)').fetchall()]
             for field in ('created_by','created_at','updated_by','updated_at'):
                 if field not in columns:execute(c,'ALTER TABLE `'+item['name']+'` ADD COLUMN '+field+(' VARCHAR(191)' if MYSQL else ' TEXT'))
+        if MYSQL:
+            for field in execute(c,'SHOW COLUMNS FROM after_sales').fetchall():
+                if field['Field'] in ('symptom','cause','resolution','experience','remark') and field['Type'].lower() not in ('mediumtext','longtext'):
+                    execute(c,'ALTER TABLE after_sales MODIFY COLUMN `'+field['Field']+'` MEDIUMTEXT NULL')
         audit_pk='BIGINT PRIMARY KEY AUTO_INCREMENT' if MYSQL else 'INTEGER PRIMARY KEY AUTOINCREMENT'
         execute(c,f'CREATE TABLE IF NOT EXISTS audit_events (id {audit_pk},actor VARCHAR(191) NOT NULL,action VARCHAR(191) NOT NULL,created_at VARCHAR(191) NOT NULL)')
         for statement in pending_indexes:execute(c,statement)
@@ -235,6 +249,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         p=urlparse(self.path);c=None
         try:
+            if p.path.startswith('/api/assistant/'):
+                c=connect();user=self.require(c);c.close();c=None;engine=get_assistant_engine();q=parse_qs(p.query)
+                if p.path=='/api/assistant/status':self.reply(engine.status());return
+                if p.path=='/api/assistant/history':self.reply(engine.rag.history(user,q.get('id',[None])[0]));return
+                raise ValueError('未知问答接口')
             if p.path.startswith('/api/offline/'):
                 c=connect();user=self.require(c);c.close();c=None
                 engine=get_offline_engine();q=parse_qs(p.query)
@@ -321,7 +340,7 @@ class Handler(BaseHTTPRequestHandler):
             if p.path=='/api/version':
                 self.reply(json.loads((ROOT/'version.json').read_text('utf-8')));return
             if p.path=='/api/state':
-                c=connect();self.reply(dict(schema=T,data=cached_snapshot(),engine='MySQL' if MYSQL else 'SQLite',version='1.4.3',release=json.loads((ROOT/'version.json').read_text('utf-8')),auth=self.identity(c)));return
+                c=connect();self.reply(dict(schema=T,data=cached_snapshot(),engine='MySQL' if MYSQL else 'SQLite',version='1.5.0',release=json.loads((ROOT/'version.json').read_text('utf-8')),auth=self.identity(c)));return
             if p.path=='/api/sql':
                 c=connect();self.require(c,True);self.reply(mysql_data(c) if parse_qs(p.query).get('data')==['1'] else ddl(True),ctype='text/plain; charset=utf-8');return
             if p.path in ('/','/app.js','/style.css','/offline.js','/offline.css'):
@@ -343,6 +362,37 @@ class Handler(BaseHTTPRequestHandler):
             n=int(self.headers.get('Content-Length','0'))
             if n>1024*1024*1024:raise ValueError('单次上传上限 1 GB')
             p=urlparse(self.path);c=connect()
+            if p.path.startswith('/api/assistant/') or p.path.startswith('/api/after-sales/import'):
+                admin=p.path in ('/api/assistant/rebuild','/api/assistant/knowledge-import','/api/after-sales/import','/api/after-sales/import-preview')
+                user=self.require(c,admin);c.close();c=None;engine=get_assistant_engine();q=parse_qs(p.query)
+                if p.path in ('/api/assistant/knowledge-import','/api/after-sales/import','/api/after-sales/import-preview'):
+                    if not 0<n<=5*1024*1024:raise ValueError('导入文件须为 1 字节至 5 MB')
+                    content=self.rfile.read(n)
+                    if len(content)!=n:raise ValueError('文件上传不完整')
+                    filename=q.get('name',[''])[0].replace('\\','/').split('/')[-1]
+                    if p.path=='/api/assistant/knowledge-import':self.reply(engine.import_knowledge(user,content,filename));return
+                    from assistant_service import import_plan
+                    defaults={k:q[k][0] for k in ('project_id','product_id','status') if q.get(k)}
+                    if p.path.endswith('import-preview'):
+                        plan=import_plan(connect,execute,content,filename,defaults);self.reply({k:v for k,v in plan.items() if k!='rows'});return
+                    with WRITE_LOCK:
+                        plan=import_plan(connect,execute,content,filename,defaults)
+                        if plan['errors']:raise ValueError('导入未执行，请先修正预览错误：'+str(plan['errors'][:5]))
+                        db=connect()
+                        try:
+                            for row in plan['rows']:save(db,'after_sales',row['record'])
+                            commit_write(db,self)
+                        except Exception:db.rollback();raise
+                        finally:db.close()
+                    try:status=engine.rebuild();updated=True
+                    except Exception:status={'warning':'售后数据已导入，知识索引更新失败，请点击更新知识库重试'};updated=False
+                    self.reply({'imported':len(plan['rows']),'duplicates':plan['duplicate_count'],'index_updated':updated,'status':status});return
+                if n>65536:raise ValueError('问答请求过大')
+                payload=json.loads(self.rfile.read(n) or b'{}')
+                if p.path=='/api/assistant/rebuild':self.reply(engine.rebuild());return
+                if p.path=='/api/assistant/chat':self.reply(engine.chat(user,payload.get('question',''),payload.get('conversation_id')));return
+                if p.path=='/api/assistant/feedback':self.reply(engine.rag.feedback(user,payload.get('question_id'),payload.get('rating'),payload.get('comment','')));return
+                raise ValueError('未知问答接口')
             if p.path.startswith('/api/offline/'):
                 user=self.require(c);c.close();c=None
                 engine=get_offline_engine();q=parse_qs(p.query)

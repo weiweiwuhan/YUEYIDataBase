@@ -157,3 +157,9 @@ python app.py --no-browser --host 0.0.0.0 --port 8765
 ### 更新后入口或版本未加载
 
 离线测试脚本和样式已合并进主前端资源。修改 static/offline.js 或 offline.css 后运行 `python build_frontend.py` 重新合并。当前版本 1.4.2；左下角显示服务端报告的版本，若显示“后端未提供版本”，说明运行进程没有加载最新版 app.py。更新整个项目后，先关闭原服务窗口（Ctrl+C），再从更新后的目录重新运行 start.bat 或 start-lan.bat，并用 Ctrl+F5 刷新。仅替换文件不会更新已运行的 Python 进程。
+
+### AI 智能问答助手（1.5.0）
+
+左侧“使用指南”替换为“AI智能问答助手”：多轮对话、个人历史、知识来源及回答反馈。默认接入 DeepSeek；在运行服务的电脑配置 `AOI_RAG_API_KEY` 后重启即可使用模型组织回答。没有密钥时仅显示本地检索摘录，不会冒充模型回答；没有依据时明确提示。默认 `AOI_RAG_BASE_URL=https://api.deepseek.com`、`AOI_RAG_MODEL=deepseek-chat`，密钥不得写入源代码或提交 Git。
+
+管理员可直接导入问答 CSV/XLSX 作为本地知识；“售后经验”表增加 CSV/Excel 预览导入、项目产品绑定校验、重复跳过及整批事务。已解决的售后经验会在下次提问前自动同步，编辑和删除也会反映到索引。详情见 RAG_ASSISTANT.md。修改 assistant.js/css 后运行 `python build_frontend.py` 合并资源。

@@ -50,6 +50,7 @@ def ddl(mysql=False):
             else:
                 s=({'int':'BIGINT','real':'DOUBLE'}.get(k,'VARCHAR(1024)' if n in ('prompt','requirements','symptom','cause','resolution','experience','remark','relative_path','member_path','root_path','thumbnail_path','local_path') else 'VARCHAR(191)') if mysql else {'int':'INTEGER','real':'REAL'}.get(k,'TEXT'))
                 if c['required']:s+=' NOT NULL'
+            if t['name']=='after_sales' and n in ('symptom','cause','resolution','experience','remark'):s='MEDIUMTEXT' if mysql else 'TEXT'
             if n=='extracted_text':s='LONGTEXT' if mysql else 'TEXT'
             if t['name']=='model_tests' and n in ('detection_rate','miss_rate','yield_rate'):constraints.append(f'  CHECK (`{n}` IS NULL OR `{n}` <= 100)')
             lines.append(f'  `{n}` {s}')
