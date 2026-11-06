@@ -112,7 +112,7 @@ class LocalPredictor:
             try:
                 ckpt = torch.load(str(checkpoint), map_location=self.device, weights_only=True)
             except Exception as exc:
-                raise ValueError('检查点安全加载失败；请在可信模型环境中另存为纯 state_dict，不能使用 weights_only=False 绕过') from exc
+                raise ValueError('检查点包含当前安全加载器不支持的对象，或与当前 PyTorch 版本不兼容。请在本机使用 convert_checkpoint.py 转换你自己的训练检查点，网页中改选生成的 .safe 模型。原始原因：'+str(exc)[:1800]) from exc
             state = ckpt.get('model_state_dict', ckpt) if isinstance(ckpt, dict) else None
             if not isinstance(state, dict):
                 raise ValueError('checkpoint 必须为 state_dict 或包含 model_state_dict 的字典')

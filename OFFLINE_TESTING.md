@@ -69,3 +69,17 @@ python configure_offline.py
 任务和图片以登录账号隔离，只有本人或管理员可以读取结果。状态、原图、分割分数、掩码、叠图及模型加载日志位于 `AOI_DATA/offline_tests`，应随整个数据目录备份，并定期由管理员清理不再需要的测试任务。界面不会把模型结果自动写入正式缺陷表。
 
 测试命令：`python -m unittest -v test_offline test_offline_http`、`node test_offline_ui.js`。测试专用预测进程只存在于临时测试目录，验证的是队列、接口和后处理，不代表真实模型精度或速度已验证。
+
+## 检查点安全加载失败的处理
+
+该提示并不代表上传图片失败。训练检查点可能包含优化器、NumPy 对象或配置对象，而网页仅允许纯权重安全加载。现在错误提示会保留原始加载原因，帮助区分文件损坏、版本不兼容和附加对象。
+
+在网页项目目录，用原模型 Python 执行（将文件名换成实际选中的检查点）：
+
+```bat
+"C:\ProgramData\anaconda3\python.exe" convert_checkpoint.py "F:\Fighting!!!!!!!!!!\MyDinoFiuntune\checkpoints\uniadet_best_yashang.pt"
+```
+
+默认仍用 weights_only=True。如果仍失败，**仅当此文件是你自己训练或完全可信的检查点**，在本机命令末尾增加 `--trust-source`。该开关会在本机读取可信训练对象，不能用于下载来的未知模型；网页服务从不启用它。转换工具只保留张量权重，用 weights_only=True 重新加载并逐张量验证一致后，生成同目录 `uniadet_best_yashang.safe.pt`，不覆盖原检查点。
+
+刷新离线测试页面，在模型列表改选带 `.safe` 的新模型，重新提交图片；此前失败任务不会自动重跑。检查点目录会自动扫描新文件，无需改模型代码。若原始原因显示文件损坏或缺少原工程依赖，应先修复对应问题，转换工具不保证能修复损坏文件。
