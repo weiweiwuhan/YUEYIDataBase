@@ -111,6 +111,53 @@ class AssistantHTTPTests(unittest.TestCase):
         self.assertEqual(response['mode'],'retrieval_only')
         self.assertTrue(response['sources'])
 
+    def test_technical_experience_attachments_retrieval_edit_delete_and_permissions(self):
+        record = {'name':'标注边界规范','category':'标注规范','tags':'轮廓复核',
+                  'content':'标注缺陷时沿真实轮廓绘制，边界必须由第二位人员复核。'}
+        self.rejected(403,self.guest,'/api/save',{'table':'technical_experiences','record':record})
+        eid=self.api(self.editor,'/api/save',{'table':'technical_experiences','record':record})['id']
+        query=urlencode({'kind':'technical_experience','experience_id':eid,'name':'边界操作.pdf'})
+        upload=self.api(self.editor,'/api/upload?'+query,raw=b'%PDF-test-procedure')
+        asset_id=upload['asset_id']
+        video=self.api(self.editor,'/api/upload?'+urlencode({'kind':'technical_experience','experience_id':eid,'name':'操作演示.mp4'}),raw=b'0123456789')
+        request=urllib.request.Request(self.base+'/api/video?asset_id='+str(video['asset_id']),headers={'Range':'bytes=2-5'})
+        with self.guest.open(request) as response:
+            self.assertEqual(response.status,206)
+            self.assertEqual(response.read(),b'2345')
+        status=self.api(self.editor,'/api/assistant/status')
+        self.assertEqual(status['technical_experience_count'],1)
+        answer=self.api(self.editor,'/api/assistant/chat',{'question':'标注边界如何复核'})
+        self.assertTrue(any(r['source_type']=='technical_experiences' and r['source_id']==str(eid) for r in answer['sources']))
+        self.assertIn('第二位人员',answer['answer'])
+        self.rejected(400,self.editor,'/api/save',{'table':'technical_experience_files','record':{'experience_id':eid}})
+        self.rejected(400,self.editor,'/api/save',{'table':'technical_experience_files','record':{'experience_id':eid,'asset_id':asset_id}})
+        self.rejected(403,self.editor,'/api/delete',{'table':'technical_experiences','id':eid})
+        record['content']='标注缺陷沿真实轮廓绘制，边界由负责人三次复核。'
+        self.api(self.editor,'/api/save',{'table':'technical_experiences','id':eid,'record':record})
+        answer=self.api(self.editor,'/api/assistant/chat',{'question':'标注边界如何复核'})
+        self.assertIn('三次复核',answer['answer'])
+        self.assertNotIn('第二位人员',answer['answer'])
+        self.api(self.admin,'/api/delete',{'table':'technical_experiences','id':eid})
+        self.assertFalse(self.api(self.guest,'/api/state')['data']['technical_experience_files'])
+        answer=self.api(self.editor,'/api/assistant/chat',{'question':'标注边界如何复核'})
+        self.assertFalse(any(r['source_type']=='technical_experiences' for r in answer['sources']))
+        with self.guest.open(self.base+'/api/media?id='+str(asset_id)+'&mode=original') as response:
+            self.assertEqual(response.read(),b'%PDF-test-procedure')
+
+    def test_software_modules_and_general_document_upload(self):
+        for module in ['大模型测试','AI检测稳定性测试','AI运行时间测试','算法重复误差测试','自定义模块']:
+            record={'name':module,'test_module':module,'model_name':'检测软件',
+                    'test_method':'连续运行一千次','expected_result':'无异常','actual_result':'平均耗时 18 ms'}
+            self.api(self.editor,'/api/save',{'table':'model_tests','record':record})
+        state=self.api(self.guest,'/api/state')['data']
+        self.assertEqual(len(state['model_tests']),5)
+        self.assertEqual(state['model_tests'][-1]['actual_result'],'平均耗时 18 ms')
+        record={'project_id':1,'code':'DOC-TEST','name':'工具操作说明','document_type':'操作说明'}
+        upload=self.api(self.editor,'/api/upload?'+urlencode({'kind':'agreement_new','name':'工具说明.pdf','record':json.dumps(record)}),raw=b'%PDF-tool-guide')
+        state=self.api(self.guest,'/api/state')['data']
+        self.assertEqual(state['technical_agreements'][0]['document_type'],'操作说明')
+        self.assertEqual(state['agreement_files'][0]['asset_id'],upload['asset_id'])
+
     def stop_server(self):
         self.process.terminate()
         try:

@@ -67,6 +67,8 @@ def validate(c,t,r,exclude=None):
     if t=='products' and not r.get('code'):
         old=execute(c,'SELECT code FROM products WHERE id=?',(exclude or r.get('id'),)).fetchone()
         r['code']=old['code'] if old else 'AUTO-'+uuid.uuid4().hex
+    if t=='model_tests' and not r.get('test_module'):r['test_module']='大模型测试'
+    if t=='technical_agreements' and not r.get('document_type'):r['document_type']='技术协议'
     meta=TABLES[t];names={x['name'] for x in meta['fields']}
     if set(r)-names:raise ValueError('未知字段: '+','.join(set(r)-names))
     out={}
@@ -87,6 +89,7 @@ def validate(c,t,r,exclude=None):
             else:
                 v=str(v);maxlen=1024 if n in ('product_spec','prompt','requirements','symptom','cause','resolution','experience','remark','relative_path','member_path','root_path','thumbnail_path','local_path') else 191
                 if n=='extracted_text':maxlen=100000
+                if (t=='technical_experiences' and n in ('content','remark')) or (t=='model_tests' and n in ('test_method','expected_result','actual_result')):maxlen=20000
                 if t=='after_sales' and n in ('symptom','cause','resolution','experience','remark'):maxlen=20000
                 if len(v)>maxlen:raise ValueError(f['label']+'内容过长')
             if f['choices'] and v not in f['choices']:raise ValueError(f['label']+'选项不合法')
@@ -113,6 +116,11 @@ def validate(c,t,r,exclude=None):
             if not q or q['asset_type']!='archive':raise ValueError('contains 来源必须是压缩包')
             if not out.get('member_path'):raise ValueError('请填写包内路径')
     if t=='videos' and not out.get('project_id') and not out.get('image_id'):raise ValueError('请选择绑定项目')
+    if t=='technical_experience_files':
+        if bool(out.get('asset_id'))==bool(out.get('video_id')):raise ValueError('请选择一种文档或视频资料')
+        if out.get('asset_id'):
+            asset=execute(c,'SELECT asset_type,file_name FROM assets WHERE id=?',(out['asset_id'],)).fetchone()
+            if not asset or (asset['asset_type']!='document' and Path(asset['file_name']).suffix.lower() not in ('.mp4','.webm','.mov','.avi','.mkv','.m4v')):raise ValueError('请选择文档或视频文件')
     if t=='model_tests':
         for field in ('detection_rate','miss_rate','yield_rate'):
             if out.get(field) is not None and out[field]>100:raise ValueError('检出率和良率须在 0–100 之间')
@@ -160,11 +168,14 @@ def initialize():
         if 'local_path' not in fields:execute(c,'ALTER TABLE engineering_projects ADD COLUMN local_path '+('VARCHAR(1024)' if MYSQL else 'TEXT'))
         agreement_fields=[x['Field'] for x in execute(c,'SHOW COLUMNS FROM technical_agreements').fetchall()] if MYSQL else [x['name'] for x in execute(c,'PRAGMA table_info(technical_agreements)').fetchall()]
         if 'extracted_text' not in agreement_fields:execute(c,'ALTER TABLE technical_agreements ADD COLUMN extracted_text '+('LONGTEXT' if MYSQL else 'TEXT'))
+        if 'document_type' not in agreement_fields:execute(c,'ALTER TABLE technical_agreements ADD COLUMN document_type '+('VARCHAR(191)' if MYSQL else 'TEXT'))
+        execute(c,"UPDATE technical_agreements SET document_type='技术协议' WHERE document_type IS NULL OR document_type=''")
         model_fields=[x['Field'] for x in execute(c,'SHOW COLUMNS FROM model_tests').fetchall()] if MYSQL else [x['name'] for x in execute(c,'PRAGMA table_info(model_tests)').fetchall()]
-        for field,kind in [('product_id','BIGINT' if MYSQL else 'INTEGER'),('test_count','BIGINT' if MYSQL else 'INTEGER'),('detection_rate','DOUBLE' if MYSQL else 'REAL'),('miss_rate','DOUBLE' if MYSQL else 'REAL'),('yield_rate','DOUBLE' if MYSQL else 'REAL'),('light_source','VARCHAR(191)' if MYSQL else 'TEXT'),('camera','VARCHAR(191)' if MYSQL else 'TEXT'),('lens','VARCHAR(191)' if MYSQL else 'TEXT'),('working_distance_mm','DOUBLE' if MYSQL else 'REAL'),('product_spec','VARCHAR(1024)' if MYSQL else 'TEXT')]:
+        for field,kind in [('test_module','VARCHAR(191)' if MYSQL else 'TEXT'),('test_method','MEDIUMTEXT' if MYSQL else 'TEXT'),('expected_result','MEDIUMTEXT' if MYSQL else 'TEXT'),('actual_result','MEDIUMTEXT' if MYSQL else 'TEXT'),('product_id','BIGINT' if MYSQL else 'INTEGER'),('test_count','BIGINT' if MYSQL else 'INTEGER'),('detection_rate','DOUBLE' if MYSQL else 'REAL'),('miss_rate','DOUBLE' if MYSQL else 'REAL'),('yield_rate','DOUBLE' if MYSQL else 'REAL'),('light_source','VARCHAR(191)' if MYSQL else 'TEXT'),('camera','VARCHAR(191)' if MYSQL else 'TEXT'),('lens','VARCHAR(191)' if MYSQL else 'TEXT'),('working_distance_mm','DOUBLE' if MYSQL else 'REAL'),('product_spec','VARCHAR(1024)' if MYSQL else 'TEXT')]:
             if field not in model_fields:
                 suffix=(' NULL, ADD CONSTRAINT fk_model_tests_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT ON UPDATE RESTRICT' if MYSQL else ' REFERENCES products(id) ON DELETE RESTRICT ON UPDATE RESTRICT') if field=='product_id' else ''
                 execute(c,f'ALTER TABLE model_tests ADD COLUMN {field} {kind}{suffix}')
+        execute(c,"UPDATE model_tests SET test_module='大模型测试' WHERE test_module IS NULL OR test_module=''")
         video_fields=[x['Field'] for x in execute(c,'SHOW COLUMNS FROM videos').fetchall()] if MYSQL else [x['name'] for x in execute(c,'PRAGMA table_info(videos)').fetchall()]
         if 'project_id' not in video_fields:
             execute(c,'ALTER TABLE videos ADD COLUMN project_id '+('BIGINT NULL, ADD CONSTRAINT fk_videos_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT ON UPDATE RESTRICT' if MYSQL else 'INTEGER REFERENCES projects(id) ON DELETE RESTRICT ON UPDATE RESTRICT'))
@@ -279,6 +290,10 @@ class Handler(BaseHTTPRequestHandler):
                 import mimetypes,re
                 c=connect();vid=int(parse_qs(p.query).get('id',['0'])[0])
                 row=execute(c,'SELECT * FROM videos WHERE id=?',(vid,)).fetchone()
+                if parse_qs(p.query).get('asset_id'):
+                    aid=int(parse_qs(p.query)['asset_id'][0]);asset,path=local_asset(c,aid)
+                    if not execute(c,'SELECT id FROM technical_experience_files WHERE asset_id=?',(aid,)).fetchone() or path.suffix.lower() not in ('.mp4','.webm','.mov','.avi','.mkv','.m4v'):raise ValueError('视频不存在')
+                    row={'file_name':asset['file_name'],'relative_path':asset['relative_path']}
                 if not row:raise ValueError('视频不存在')
                 path=(UPLOADS/row['relative_path']).resolve()
                 if not path.is_relative_to(UPLOADS) or not path.is_file():raise ValueError('视频文件不存在')
@@ -340,7 +355,7 @@ class Handler(BaseHTTPRequestHandler):
             if p.path=='/api/version':
                 self.reply(json.loads((ROOT/'version.json').read_text('utf-8')));return
             if p.path=='/api/state':
-                c=connect();self.reply(dict(schema=T,data=cached_snapshot(),engine='MySQL' if MYSQL else 'SQLite',version='1.5.1',release=json.loads((ROOT/'version.json').read_text('utf-8')),auth=self.identity(c)));return
+                c=connect();self.reply(dict(schema=T,data=cached_snapshot(),engine='MySQL' if MYSQL else 'SQLite',version='1.6.0',release=json.loads((ROOT/'version.json').read_text('utf-8')),auth=self.identity(c)));return
             if p.path=='/api/sql':
                 c=connect();self.require(c,True);self.reply(mysql_data(c) if parse_qs(p.query).get('data')==['1'] else ddl(True),ctype='text/plain; charset=utf-8');return
             if p.path in ('/','/app.js','/style.css','/offline.js','/offline.css'):
@@ -418,14 +433,19 @@ class Handler(BaseHTTPRequestHandler):
             self.require(c,p.path in ('/api/delete','/api/import','/api/seed','/api/model-test-delete','/api/model-test-file-delete'))
             if p.path=='/api/upload':
                 q=parse_qs(p.query);name=safe_filename(q.get('name',['upload.bin'])[0])
-                if q.get('kind')==['agreement_new'] and n>256*1024*1024:raise ValueError('协议附件单文件最多 256 MB')
+                if q.get('kind')==['agreement_new'] and n>256*1024*1024:raise ValueError('文档附件单文件最多 256 MB')
                 if q.get('kind')==['agreement']:
-                    if n>256*1024*1024:raise ValueError('协议附件单文件最多 256 MB')
-                    if not execute(c,'SELECT id FROM technical_agreements WHERE id=?',(int(q.get('agreement_id',['0'])[0]),)).fetchone():raise ValueError('请先保存并选择技术协议，再上传附件')
+                    if n>256*1024*1024:raise ValueError('文档附件单文件最多 256 MB')
+                    if not execute(c,'SELECT id FROM technical_agreements WHERE id=?',(int(q.get('agreement_id',['0'])[0]),)).fetchone():raise ValueError('请先保存并选择文档资料，再上传附件')
                 if q.get('kind')==['modeltest']:
                     if n>256*1024*1024:raise ValueError('测试图片单文件最多 256 MB')
                     if not execute(c,'SELECT id FROM model_tests WHERE id=?',(int(q.get('test_id',['0'])[0]),)).fetchone():raise ValueError('请先保存测试记录')
                     if q.get('role',[''])[0] not in ('input','result'):raise ValueError('请选择原图或效果图')
+                if q.get('kind')==['technical_experience']:
+                    video=Path(name).suffix.lower() in ('.mp4','.webm','.mov','.avi','.mkv','.m4v')
+                    if n>(1024*1024*1024 if video else 256*1024*1024):raise ValueError('文档最多 256 MB，视频最多 1 GB')
+                    if not execute(c,'SELECT id FROM technical_experiences WHERE id=?',(int(q.get('experience_id',['0'])[0]),)).fetchone():raise ValueError('请先保存技术经验')
+                    if n==0:raise ValueError('附件文件为空')
                 dest=UPLOADS/(uuid.uuid4().hex+'_'+name);h=hashlib.sha256();remain=n
                 with dest.open('wb') as out:
                     created.append(dest)
@@ -447,15 +467,17 @@ class Handler(BaseHTTPRequestHandler):
                 loc=execute(c,'SELECT id FROM storage_locations WHERE name=?',('本地上传',)).fetchone()
                 lid=loc['id'] if loc else save(c,'storage_locations',dict(name='本地上传',root_path=str(UPLOADS)))
                 ext=dest.suffix.lower();kind='image' if ext in ('.png','.bmp','.jpg','.jpeg','.tif','.tiff','.webp') else 'archive' if ext=='.zip' else 'other'
+                experience=q.get('kind')==['technical_experience']
                 modeltest=q.get('kind')==['modeltest']
                 if modeltest and kind!='image':raise ValueError('请上传图片格式的测试原图或效果图')
                 engineering=q.get('kind',[''])[0]=='engineering'
                 agreement=q.get('kind')==['agreement']
-                if agreement:kind='document'
+                if agreement or experience:kind='document'
                 if engineering:kind='engineering'
                 if q.get('image_only')==['1'] and kind!='image':raise ValueError('请选择图片文件')
                 info=image_info(dest) if kind=='image' else {}
                 aid=save(c,'assets',dict(asset_type=kind,file_name=name,storage_location_id=lid,relative_path=dest.name,storage_mode='file',file_size=n,sha256=h.hexdigest(),status='available'))
+                if experience:save(c,'technical_experience_files',dict(experience_id=int(q['experience_id'][0]),asset_id=aid))
                 if modeltest:save(c,'model_test_files',dict(test_id=int(q['test_id'][0]),asset_id=aid,role=q['role'][0]))
                 if agreement:
                     save(c,'agreement_files',dict(agreement_id=int(q.get('agreement_id',['0'])[0]),asset_id=aid))
@@ -586,6 +608,7 @@ class Handler(BaseHTTPRequestHandler):
             elif p.path=='/api/delete':
                 t=payload['table']
                 if t not in TABLES:raise ValueError('未知表')
+                if t=='technical_experiences':execute(c,'DELETE FROM technical_experience_files WHERE experience_id=?',(int(payload['id']),))
                 execute(c,f'DELETE FROM `{t}` WHERE id=?',(int(payload['id']),));result=dict(ok=True)
             elif p.path=='/api/seed':seed(c);result=dict(ok=True)
             elif p.path=='/api/import':

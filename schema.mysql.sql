@@ -1,4 +1,4 @@
--- AOI Industrial Asset Catalog | 25 tables
+-- AOI Industrial Asset Catalog | 27 tables
 
 -- Non-destructive DDL: existing tables are preserved.
 
@@ -295,6 +295,7 @@ CREATE TABLE IF NOT EXISTS `videos` (
 CREATE TABLE IF NOT EXISTS `technical_agreements` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `project_id` BIGINT NOT NULL,
+  `document_type` VARCHAR(191),
   `code` VARCHAR(191) NOT NULL,
   `name` VARCHAR(191) NOT NULL,
   `signed_date` VARCHAR(191),
@@ -359,6 +360,10 @@ CREATE TABLE IF NOT EXISTS `agreement_files` (
 CREATE TABLE IF NOT EXISTS `model_tests` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(191) NOT NULL,
+  `test_module` VARCHAR(191),
+  `test_method` MEDIUMTEXT,
+  `expected_result` MEDIUMTEXT,
+  `actual_result` MEDIUMTEXT,
   `project_id` BIGINT,
   `model_name` VARCHAR(191) NOT NULL,
   `model_version` VARCHAR(191),
@@ -406,4 +411,33 @@ CREATE TABLE IF NOT EXISTS `model_test_files` (
   FOREIGN KEY (`asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CHECK (`role` IN ('input', 'result')),
   UNIQUE (`asset_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `technical_experiences` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `name` VARCHAR(191) NOT NULL,
+  `category` VARCHAR(191),
+  `tags` VARCHAR(191),
+  `content` MEDIUMTEXT NOT NULL,
+  `remark` MEDIUMTEXT,
+  `created_by` VARCHAR(191),
+  `created_at` VARCHAR(191),
+  `updated_by` VARCHAR(191),
+  `updated_at` VARCHAR(191)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `technical_experience_files` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `experience_id` BIGINT NOT NULL,
+  `asset_id` BIGINT,
+  `video_id` BIGINT,
+  `created_by` VARCHAR(191),
+  `created_at` VARCHAR(191),
+  `updated_by` VARCHAR(191),
+  `updated_at` VARCHAR(191),
+  FOREIGN KEY (`experience_id`) REFERENCES `technical_experiences` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  FOREIGN KEY (`asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  FOREIGN KEY (`video_id`) REFERENCES `videos` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  UNIQUE (`experience_id`, `asset_id`),
+  UNIQUE (`experience_id`, `video_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
