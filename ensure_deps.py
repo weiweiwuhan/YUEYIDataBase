@@ -11,3 +11,7 @@ except ImportError:
 try:import openpyxl
 except ImportError:
     subprocess.run([sys.executable,'-m','pip','install','openpyxl>=3.1,<4'],check=True)
+
+try:import pymupdf
+except ImportError:
+    subprocess.run([sys.executable,'-m','pip','install','PyMuPDF>=1.24,<2'],check=True)

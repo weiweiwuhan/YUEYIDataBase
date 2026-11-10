@@ -46,6 +46,15 @@ def cached_snapshot():
             finally:c.close()
         return STATE_CACHE['data']
 def commit_write(c,handler):
+    from knowledge_graph import validate_experience
+    checks=getattr(ACTOR,'knowledge_checks',set())
+    for table,rid in checks:
+        if table=='technical_experiences':
+            if execute(c,'SELECT id FROM technical_experiences WHERE id=?',(rid,)).fetchone():validate_experience(c,execute,rid)
+        elif table=='model_tests':
+            for raw in execute(c,"SELECT * FROM knowledge_links WHERE evidence_test_id=? OR (relation='测试依据' AND target_table='model_tests' AND target_id=?)",(rid,rid)).fetchall():
+                link=dict(raw)
+                if link['source_table']=='technical_experiences':validate_experience(c,execute,link['source_id'])
     if getattr(ACTOR,'promote_media',False):
         from catalog_migrations import promote
         promote(c,execute,save);ACTOR.promote_media=False
@@ -88,18 +97,17 @@ def validate(c,t,r,exclude=None):
             if f['kind'] in ('id','int'):
                 if isinstance(v,bool) or str(v).strip()!=str(int(v)):raise ValueError(f['label']+'必须是整数')
                 v=int(v)
-                if v<0 or (n=='id' and v==0):raise ValueError(f['label']+'数值不合法')
+                if v<f.get('minimum',0):raise ValueError(f['label']+'数值不合法')
             elif f['kind']=='real':
                 import math
+                if isinstance(v,bool):raise ValueError(f['label']+'必须是数值')
                 v=float(v)
                 if not math.isfinite(v) or v<0:raise ValueError(f['label']+'须为非负有限数值')
             else:
-                v=str(v);maxlen=1024 if n in ('product_spec','prompt','requirements','symptom','cause','resolution','experience','remark','relative_path','member_path','root_path','thumbnail_path','local_path') else 191
-                if n=='extracted_text':maxlen=100000
-                if n in ('conditions','parameter_snapshot','acceptance_criteria','specification'):maxlen=20000
-                if (t=='technical_experiences' and n in ('content','remark')) or (t=='model_tests' and n in ('test_method','expected_result','actual_result')):maxlen=20000
-                if t=='after_sales' and n in ('symptom','cause','resolution','experience','remark'):maxlen=20000
+                v=str(v);maxlen=f.get('maxLength',191)
+                if f['required'] and not v.strip():raise ValueError(f['label']+'不能为空')
                 if len(v)>maxlen:raise ValueError(f['label']+'内容过长')
+            if 'maximum' in f and v>f['maximum']:raise ValueError(f['label']+'不得超过 '+str(f['maximum']))
             if f['choices'] and v not in f['choices']:raise ValueError(f['label']+'选项不合法')
         out[n]=v
     rid=exclude or out.get('id')
@@ -138,9 +146,6 @@ def validate(c,t,r,exclude=None):
         if out.get('asset_id'):
             asset=execute(c,'SELECT asset_type,file_name FROM assets WHERE id=?',(out['asset_id'],)).fetchone()
             if not asset or (asset['asset_type']!='document' and Path(asset['file_name']).suffix.lower() not in ('.mp4','.webm','.mov','.avi','.mkv','.m4v')):raise ValueError('请选择文档或视频文件')
-    if t=='model_tests':
-        for field in ('detection_rate','miss_rate','yield_rate'):
-            if out.get(field) is not None and out[field]>100:raise ValueError('检出率和良率须在 0–100 之间')
     return out
 def save(c,t,r,rid=None):
     r=dict(r)
@@ -168,8 +173,14 @@ def save(c,t,r,rid=None):
         r.pop('id',None)
         q=execute(c,f'UPDATE `{t}` SET '+','.join('`'+k+'`=?' for k in r)+' WHERE id=?',list(r.values())+[rid])
         if q.rowcount==0 and not execute(c,f'SELECT id FROM `{t}` WHERE id=?',(rid,)).fetchone():raise ValueError('记录不存在')
-        return rid
-    keys=list(r);q=execute(c,f'INSERT INTO `{t}` ('+','.join('`'+k+'`' for k in keys)+') VALUES ('+','.join('?' for _ in keys)+')',list(r.values()));return r.get('id',q.lastrowid)
+        saved_id=rid
+    else:
+        keys=list(r);q=execute(c,f'INSERT INTO `{t}` ('+','.join('`'+k+'`' for k in keys)+') VALUES ('+','.join('?' for _ in keys)+')',list(r.values()));saved_id=r.get('id',q.lastrowid)
+    checks=getattr(ACTOR,'knowledge_checks',set())
+    if t in ('technical_experiences','model_tests'):checks.add((t,saved_id))
+    if t=='knowledge_links' and r['source_table'] in ('technical_experiences','model_tests'):checks.add((r['source_table'],r['source_id']))
+    ACTOR.knowledge_checks=checks
+    return saved_id
 def snapshot(c):return {t['name']:rows(c,t['name']) for t in T}
 def seed(c):
     if any(execute(c,f'SELECT COUNT(*) AS n FROM `{t["name"]}`').fetchone()['n'] for t in T):raise ValueError('示例仅能写入空库；现有数据未改变。')
@@ -292,6 +303,24 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         if encoded:self.send_header('Content-Encoding','gzip')
         self.send_header('Vary','Accept-Encoding');self.send_header('Content-Type',ctype);self.send_header('Content-Length',str(len(b)));self.send_header('X-Content-Type-Options','nosniff');self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(b)
+    def stream_chat(self,engine,user,payload):
+        from rag_assistant import StreamCancelled
+        question=engine.rag.validate_chat_request(user,payload.get('question',''),payload.get('conversation_id'))
+        self.send_response(200)
+        for name,value in [('Content-Type','text/event-stream; charset=utf-8'),('Cache-Control','no-cache, no-transform'),('X-Accel-Buffering','no'),('Connection','close'),('X-Content-Type-Options','nosniff')]:self.send_header(name,value)
+        self.end_headers();self.close_connection=True
+        def emit(kind,data):
+            try:
+                self.wfile.write(('event: '+kind+'\ndata: '+json.dumps(data,ensure_ascii=False)+'\n\n').encode('utf-8'));self.wfile.flush()
+            except (BrokenPipeError,ConnectionError,OSError):raise StreamCancelled()
+        try:
+            emit('status',{'message':'正在检索知识与适用条件…'})
+            result=engine.chat(user,question,payload.get('conversation_id'),emit=emit)
+            emit('done',result)
+        except StreamCancelled:pass
+        except Exception as error:
+            try:emit('error',{'error':str(error) if isinstance(error,(ValueError,PermissionError)) else '回答暂时无法完成，请重试。'})
+            except StreamCancelled:pass
     def do_GET(self):
         p=urlparse(self.path);c=None
         try:
@@ -407,7 +436,7 @@ class Handler(BaseHTTPRequestHandler):
             if p.path=='/api/version':
                 self.reply(json.loads((ROOT/'version.json').read_text('utf-8')));return
             if p.path=='/api/state':
-                c=connect();self.reply(dict(schema=T,data=cached_snapshot(),engine='MySQL' if MYSQL else 'SQLite',version='1.7.0',release=json.loads((ROOT/'version.json').read_text('utf-8')),auth=self.identity(c)));return
+                c=connect();self.reply(dict(schema=T,data=cached_snapshot(),engine='MySQL' if MYSQL else 'SQLite',version=json.loads((ROOT/'version.json').read_text('utf-8'))['version'],release=json.loads((ROOT/'version.json').read_text('utf-8')),auth=self.identity(c)));return
             if p.path=='/api/sql':
                 c=connect();self.require(c,True);self.reply(mysql_data(c) if parse_qs(p.query).get('data')==['1'] else ddl(True),ctype='text/plain; charset=utf-8');return
             if p.path in ('/','/app.js','/style.css','/offline.js','/offline.css'):
@@ -423,7 +452,7 @@ class Handler(BaseHTTPRequestHandler):
             self.reply({'error':'跨来源写入已拒绝'},403);return
         if self.headers.get('X-AOI-Client')!='local-v1':self.reply({'error':'缺少本地客户端标识'},403);return
         ACTOR.username=None
-        c=None;created=[];renamed=[];write_locked=False;self._renamed=renamed;ACTOR.storage_dirty=False;ACTOR.recapture_snapshot=False;ACTOR.promote_media=False
+        c=None;created=[];renamed=[];write_locked=False;self._renamed=renamed;ACTOR.storage_dirty=False;ACTOR.recapture_snapshot=False;ACTOR.promote_media=False;ACTOR.knowledge_checks=set()
         try:
             self.connection.settimeout(120)
             n=int(self.headers.get('Content-Length','0'))
@@ -456,7 +485,9 @@ class Handler(BaseHTTPRequestHandler):
                     self.reply({'imported':len(plan['rows']),'duplicates':plan['duplicate_count'],'index_updated':updated,'status':status});return
                 if n>65536:raise ValueError('问答请求过大')
                 payload=json.loads(self.rfile.read(n) or b'{}')
+                if not isinstance(payload,dict):raise ValueError('问答请求必须是对象')
                 if p.path=='/api/assistant/rebuild':self.reply(engine.rebuild());return
+                if p.path=='/api/assistant/chat-stream':self.stream_chat(engine,user,payload);return
                 if p.path=='/api/assistant/chat':self.reply(engine.chat(user,payload.get('question',''),payload.get('conversation_id')));return
                 if p.path=='/api/assistant/feedback':self.reply(engine.rag.feedback(user,payload.get('question_id'),payload.get('rating'),payload.get('comment','')));return
                 raise ValueError('未知问答接口')
@@ -700,8 +731,11 @@ class Handler(BaseHTTPRequestHandler):
             elif p.path=='/api/delete':
                 t=payload['table']
                 if t not in TABLES:raise ValueError('未知表')
-                if t in ('model_tests','technical_experiences','technical_objects','products','product_categories','defect_types','projects','technical_agreements','videos','assets','images','engineering_projects','after_sales'):
-                    referenced=execute(c,'SELECT id FROM knowledge_links WHERE (target_table=? AND target_id=?) OR evidence_test_id=?',(t,int(payload['id']),int(payload['id']) if t=='model_tests' else -1)).fetchone()
+                if t=='knowledge_links':
+                    link=execute(c,'SELECT source_table,source_id FROM knowledge_links WHERE id=?',(int(payload['id']),)).fetchone()
+                    if link and link['source_table'] in ('technical_experiences','model_tests'):ACTOR.knowledge_checks.add((link['source_table'],link['source_id']))
+                if t in ('materials','process_types','model_tests','technical_experiences','technical_objects','products','product_categories','defect_types','projects','technical_agreements','videos','assets','images','engineering_projects','after_sales'):
+                    referenced=execute(c,'SELECT id FROM knowledge_links WHERE (target_table=? AND target_id=?) OR evidence_test_id=? OR evidence_document_id=?',(t,int(payload['id']),int(payload['id']) if t=='model_tests' else -1,int(payload['id']) if t=='technical_agreements' else -1)).fetchone()
                     if referenced:raise ValueError('该对象仍被知识关联引用，请先解除关联')
                     execute(c,'DELETE FROM knowledge_links WHERE source_table=? AND source_id=?',(t,int(payload['id'])))
                     execute(c,'DELETE FROM entity_aliases WHERE entity_table=? AND entity_id=?',(t,int(payload['id'])))
@@ -738,11 +772,20 @@ def main():
     args,_=parser.parse_known_args()
     initialize();host=args.host;port=args.port
     server=CatalogServer((host,port),Handler)
+    from media_preview import backfill_previews
+    preview_stop=threading.Event()
+    def fill_covers():
+        try:
+            result=backfill_previews(connect,execute,UPLOADS,THUMBS,preview_stop)
+            print('Document covers: '+json.dumps({k:v for k,v in result.items() if k!='items'},ensure_ascii=False),flush=True)
+        except Exception:print('Document cover generation deferred; previews will retry when opened.',flush=True)
+    threading.Thread(target=fill_covers,name='document-covers',daemon=True).start()
     print(f'AOI Catalog: http://127.0.0.1:{port} | {"MySQL" if MYSQL else "SQLite"}',flush=True)
     if not args.no_browser:webbrowser.open(f'http://127.0.0.1:{port}')
     try:server.serve_forever()
     except KeyboardInterrupt:pass
     finally:
+        preview_stop.set()
         server.server_close()
         if OFFLINE_ENGINE:OFFLINE_ENGINE.close()
 if __name__=='__main__':main()

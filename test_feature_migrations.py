@@ -7,6 +7,28 @@ import tempfile
 import unittest
 
 class FeatureMigrationTests(unittest.TestCase):
+    def test_v17_upgrade_adds_evidence_fields_without_changing_links(self):
+        code='''
+import app
+app.initialize();c=app.connect()
+app.save(c,'model_tests',{'id':8,'name':'旧测试','model_name':'模型A'})
+app.save(c,'technical_experiences',{'id':9,'name':'旧经验','content':'原始经验'})
+c.execute('DROP TABLE knowledge_links')
+c.execute('CREATE TABLE knowledge_links (id INTEGER PRIMARY KEY,source_table TEXT,source_id INTEGER,relation TEXT,target_table TEXT,target_id INTEGER,conditions TEXT,confirmation_status TEXT,evidence_test_id INTEGER REFERENCES model_tests(id),created_by TEXT,created_at TEXT,updated_by TEXT,updated_at TEXT)')
+c.execute("INSERT INTO knowledge_links (id,source_table,source_id,relation,target_table,target_id,conditions) VALUES (17,'technical_experiences',9,'测试依据','model_tests',8,'原始条件')")
+c.commit();c.close()
+app.initialize();app.initialize();c=app.connect()
+row=dict(c.execute('SELECT * FROM knowledge_links WHERE id=17').fetchone())
+assert row['conditions']=='原始条件' and row['source_id']==9 and row['target_id']==8
+assert row['evidence_document_id'] is None and row['evidence_locator'] is None
+assert not c.execute('PRAGMA foreign_key_check').fetchall()
+c.close()
+'''
+        with tempfile.TemporaryDirectory() as data:
+            env=dict(os.environ,AOI_DATA=data,DB_ENGINE='sqlite',PYTHONDONTWRITEBYTECODE='1')
+            result=subprocess.run([sys.executable,'-c',code],cwd=Path(__file__).parent,env=env,capture_output=True)
+            self.assertEqual(result.returncode,0,result.stderr.decode())
+
     def test_incremental_upgrade_preserves_legacy_data(self):
         code='''
 import app

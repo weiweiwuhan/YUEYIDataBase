@@ -1,0 +1,30 @@
+name: Verify catalog
+on:
+  push:
+  pull_request:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install document converters
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-writer libreoffice-impress fonts-noto-cjk ffmpeg
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python export_contract.py --check
+      - name: Python regression and integration checks
+        run: python -m unittest discover -p 'test_*.py' -q
+      - name: Browser logic checks
+        run: |
+          node test_assistant_ui.js
+          node test_image_search.js
+          node test_offline_ui.js
+      - name: Check frontend bundle
+        run: |
+          python build_frontend.py
+          git diff --exit-code -- static/app.js static/style.css

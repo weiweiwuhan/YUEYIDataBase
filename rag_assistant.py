@@ -22,6 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+import unicodedata
 
 
 MAX_DOCUMENTS = 20000
@@ -45,7 +46,7 @@ def _now():
 
 def _tokens(value):
     """Chinese character/bigram matching plus case-insensitive Latin words."""
-    normalized = str(value).casefold()
+    normalized = unicodedata.normalize('NFKC',str(value)).casefold()
     tokens = []
     for word in re.findall(r"[a-z0-9][a-z0-9_.+-]*", normalized):
         if len(word) > 1 and word not in _ASCII_STOP_WORDS:
@@ -58,7 +59,7 @@ def _tokens(value):
 
 
 def _categories(value):
-    normalized = str(value).casefold()
+    normalized = unicodedata.normalize('NFKC',str(value)).casefold()
     return {name for name, words in _TAXONOMY.items()
             if name.casefold() in normalized or any(word in normalized for word in words)}
 
@@ -76,6 +77,10 @@ class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Never forward a model credential to a redirected endpoint."""
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         raise urllib.error.HTTPError(req.full_url, code, "redirect refused", headers, fp)
+
+
+class StreamCancelled(BaseException):
+    """A disconnected reader cancels generation without storing a partial answer."""
 
 
 class RagAssistant:
@@ -396,23 +401,104 @@ class RagAssistant:
         except (ValueError, KeyError, IndexError, TypeError, UnicodeError):
             raise RuntimeError("模型服务返回的内容格式无效，请检查接口兼容性。") from None
 
-    def chat(self, user, question, conversation_id=None, structural_sources=None):
+    def _generate_stream(self, messages):
+        config = self._configuration()
+        if config['error'] or not config['configured']:
+            raise RuntimeError(config['error'] or '模型服务尚未配置')
+        endpoint = config['base'].rstrip('/')
+        if not endpoint.endswith('/chat/completions'):
+            endpoint += '/chat/completions'
+        headers = {'Content-Type': 'application/json', 'Accept': 'text/event-stream'}
+        if config['key']:
+            headers['Authorization'] = 'Bearer ' + config['key']
+        request = urllib.request.Request(endpoint, json.dumps({'model': config['model'], 'messages': messages,
+            'temperature': 0.15, 'max_tokens': 1800, 'stream': True}, ensure_ascii=False).encode(), headers)
+        opener = urllib.request.build_opener(_SafeRedirectHandler())
+        try:
+            with opener.open(request, timeout=60) as response:
+                size, characters, finished, received = 0, 0, False, False
+                data_lines = []
+                while True:
+                    line = response.readline(262145)
+                    size += len(line)
+                    if size > 2_000_000 or len(line) > 262144:
+                        raise RuntimeError('模型服务响应过大，请稍后重试。')
+                    if not line:
+                        if data_lines:
+                            raise RuntimeError('模型回答传输中断，请重试。')
+                        break
+                    text = line.decode('utf-8').rstrip('\r\n')
+                    if text.startswith('data:'):
+                        data_lines.append(text[5:].lstrip(' '))
+                    elif not text and data_lines:
+                        payload = '\n'.join(data_lines)
+                        data_lines = []
+                        if payload == '[DONE]':
+                            finished = True
+                            break
+                        item = json.loads(payload)
+                        if 'error' in item:
+                            raise RuntimeError('模型服务生成失败，请稍后重试。')
+                        choices = item.get('choices') or []
+                        if not choices:
+                            continue
+                        choice = choices[0]
+                        content = choice.get('delta', {}).get('content')
+                        if content:
+                            if not isinstance(content, str):
+                                raise ValueError('invalid content')
+                            characters += len(content)
+                            if characters > 50000:
+                                raise RuntimeError('模型服务响应过大，请稍后重试。')
+                            received = True
+                            yield content
+                        if choice.get('finish_reason'):
+                            if choice['finish_reason'] != 'stop':
+                                raise RuntimeError('模型回答未完整生成，请缩小问题范围后重试。')
+                            finished = True
+                if not received or not finished:
+                    raise RuntimeError('模型回答传输中断或内容为空，请重试。')
+        except urllib.error.HTTPError as error:
+            raise RuntimeError('模型服务返回 HTTP {}，请管理员检查模型配置或服务状态。'.format(error.code)) from None
+        except (socket.timeout, TimeoutError):
+            raise RuntimeError('模型服务响应超时，请稍后重试。') from None
+        except urllib.error.URLError:
+            raise RuntimeError('无法连接模型服务，请检查服务是否运行及网络连接。') from None
+        except (ValueError, KeyError, IndexError, TypeError, UnicodeError):
+            raise RuntimeError('模型服务返回的内容格式无效，请检查接口兼容性。') from None
+
+    def validate_chat_request(self, user, question, conversation_id=None):
+        user_id, _ = self._user(user)
+        question = _limited_string(question, MAX_QUESTION_CHARS, '问题', True)
+        if conversation_id:
+            with self._db_lock, self._connect() as db:
+                self._conversation(db, user_id, conversation_id)
+        return question
+
+    def chat(self, user, question, conversation_id=None, structural_sources=None, emit=None,
+             answer_override=None, source_filter=None):
         user_id, username = self._user(user)
-        question = _limited_string(question, MAX_QUESTION_CHARS, "问题", True)
+        question = self.validate_chat_request(user, question, conversation_id)
         conversation_id, context = self._prepare_conversation(user_id, username, question, conversation_id)
         # Resolve short follow-up questions using prior user wording for retrieval.
-        sources = self.retrieve(question)
+        sources = self.retrieve(question, top_k=8 if source_filter else 5)
         if structural_sources:
             selected=list(structural_sources)
             seen={str(d['id']) for d in selected}
-            sources=(selected+[d for d in sources if str(d['id']) not in seen])[:5]
+            sources=(selected+[d for d in sources if str(d['id']) not in seen])[:11 if source_filter else 5]
         if not sources and context and len(question) <= 40 and re.search(r"(那|这|它|继续|具体|详细|还有|怎么办|怎么处理|怎么检查|如何处理)", question):
             previous_question = next((item["content"] for item in reversed(context) if item["role"] == "user"), "")
             sources = self.retrieve(previous_question[:MAX_QUESTION_CHARS - len(question) - 1] + " " + question)
+        if source_filter:
+            sources = source_filter(sources)[:5]
+        if emit:
+            emit('sources', {'conversation_id': conversation_id, 'sources': sources})
         config = self._configuration()
         warning = ""
         model = config["model"]
-        if not sources:
+        if answer_override:
+            mode, answer = answer_override
+        elif not sources:
             mode = "insufficient_evidence"
             answer = "现有知识库没有足够依据回答这个问题。请补充设备、产品、故障现象或报警信息，或先导入相关售后经验并同步知识库。"
         elif config["error"]:
@@ -432,7 +518,17 @@ class RagAssistant:
                 answer = warning + "已保留相关知识来源。"
             else:
                 try:
-                    answer = self._generate(self._messages(question, sources, context))
+                    if emit:
+                        emit('status', {'message': '正在生成回答…'})
+                        parts = []
+                        for part in self._generate_stream(self._messages(question, sources, context)):
+                            parts.append(part)
+                            emit('delta', {'text': part})
+                        answer = ''.join(parts).strip()
+                        if not answer:
+                            raise RuntimeError('模型回答为空，请重试。')
+                    else:
+                        answer = self._generate(self._messages(question, sources, context))
                     mode = "model"
                 except Exception as error:
                     mode = "service_error"
@@ -443,6 +539,8 @@ class RagAssistant:
                     answer = "模型服务调用失败，未生成回答。" + warning + " 已保留相关知识来源供查阅。"
                 finally:
                     _GENERATION_SLOTS.release()
+        if emit and mode != 'model':
+            emit('reset', {'answer': answer, 'mode': mode, 'warning': warning})
         created_at = _now()
         index_version = sources[0]["index_version"] if sources else self.status()["version"]
         with self._db_lock, self._connect() as db:
@@ -455,7 +553,8 @@ class RagAssistant:
         return {"conversation_id": conversation_id, "question_id": question_id, "question": question,
                 "answer": answer, "sources": sources, "mode": mode,
                 "model": model if mode == "model" else "", "warning": warning,
-                "index_version": index_version, "created_at": created_at}
+                "index_version": index_version, "created_at": created_at,
+                "documents": self.status()['documents']}
 
     def history(self, user, conversation_id=None):
         user_id, _ = self._user(user)

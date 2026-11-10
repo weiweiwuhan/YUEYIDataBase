@@ -1,0 +1,2637 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AOI catalog exchange",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "storage_locations": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "storage_locations",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "root_path": {
+            "type": "string",
+            "maxLength": 1024,
+            "minLength": 1
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "name",
+          "root_path"
+        ]
+      }
+    },
+    "product_categories": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "product_categories",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "parent_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    "materials": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "materials",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "remark": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    "process_types": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "process_types",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "remark": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    "defect_types": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "defect_types",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "remark": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "projects",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "customer_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "remark": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ]
+      }
+    },
+    "products": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "products",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "category_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "material_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "spec_text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "diameter_mm": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "单位：mm"
+          },
+          "length_mm": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "单位：mm"
+          },
+          "remark": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "assets",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "asset_type": {
+            "type": "string",
+            "maxLength": 191,
+            "enum": [
+              "image",
+              "archive",
+              "engineering",
+              "annotation",
+              "document",
+              "other"
+            ],
+            "minLength": 1
+          },
+          "preview_asset_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "file_name": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "storage_location_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "relative_path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "storage_mode": {
+            "type": "string",
+            "maxLength": 191,
+            "enum": [
+              "file",
+              "archive_member"
+            ],
+            "minLength": 1
+          },
+          "file_size": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "status": {
+            "type": "string",
+            "maxLength": 191,
+            "enum": [
+              "available",
+              "unverified",
+              "missing",
+              "pending",
+              "failed"
+            ],
+            "minLength": 1
+          },
+          "remark": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "asset_type",
+          "file_name",
+          "storage_mode",
+          "status"
+        ]
+      }
+    },
+    "images": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "images",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "asset_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "width": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "height": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "channels": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "quality_label": {
+            "type": "string",
+            "maxLength": 191,
+            "enum": [
+              "unknown",
+              "OK",
+              "NG"
+            ],
+            "minLength": 1
+          },
+          "inspection_surface": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "station_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "annotation_status": {
+            "type": "string",
+            "maxLength": 191,
+            "enum": [
+              "unlabeled",
+              "labeled",
+              "reviewed"
+            ],
+            "minLength": 1
+          },
+          "thumbnail_path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "asset_id",
+          "quality_label",
+          "annotation_status"
+        ]
+      }
+    },
+    "engineering_projects": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "engineering_projects",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "asset_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "local_path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "image_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "software_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "software_version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "engineering_version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "remark": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "asset_id",
+          "name"
+        ]
+      }
+    },
+    "project_products": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "project_products",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "project_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "product_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "project_id",
+          "product_id"
+        ]
+      }
+    },
+    "project_assets": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "project_assets",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "project_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "asset_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "project_id",
+          "asset_id"
+        ]
+      }
+    },
+    "asset_products": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "asset_products",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "asset_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "product_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "asset_id",
+          "product_id"
+        ]
+      }
+    },
+    "product_processes": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "product_processes",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "product_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "process_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "product_id",
+          "process_id"
+        ]
+      }
+    },
+    "image_defects": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "image_defects",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "image_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "defect_type_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "remark": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "image_id",
+          "defect_type_id"
+        ]
+      }
+    },
+    "asset_defects": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "asset_defects",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "asset_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "defect_type_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "remark": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "asset_id",
+          "defect_type_id"
+        ]
+      }
+    },
+    "asset_relations": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "asset_relations",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "source_asset_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "target_asset_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "relation_type": {
+            "type": "string",
+            "maxLength": 191,
+            "enum": [
+              "contains",
+              "paired",
+              "annotation",
+              "version"
+            ],
+            "minLength": 1
+          },
+          "member_path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "source_asset_id",
+          "target_asset_id",
+          "relation_type"
+        ]
+      }
+    },
+    "image_embeddings": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "image_embeddings",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "image_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "model_name": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "model_version": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "dimension": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "vector_key": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "image_id",
+          "model_name",
+          "model_version",
+          "dimension",
+          "vector_key"
+        ]
+      }
+    },
+    "videos": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "videos",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "image_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "project_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "asset_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "preview_asset_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "file_name": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "relative_path": {
+            "type": "string",
+            "maxLength": 1024,
+            "minLength": 1
+          },
+          "file_size": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "remark": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "name",
+          "file_name",
+          "relative_path"
+        ]
+      }
+    },
+    "technical_agreements": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "technical_agreements",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "project_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "document_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "signed_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "requirements": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "extracted_text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 100000
+          },
+          "remark": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ]
+      }
+    },
+    "agreement_products": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "agreement_products",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "agreement_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "product_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "agreement_id",
+          "product_id"
+        ]
+      }
+    },
+    "after_sales": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "after_sales",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "project_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "product_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "service_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "status": {
+            "type": "string",
+            "maxLength": 191,
+            "enum": [
+              "待处理",
+              "处理中",
+              "已解决"
+            ],
+            "minLength": 1
+          },
+          "symptom": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 20000
+          },
+          "cause": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 20000
+          },
+          "resolution": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 20000
+          },
+          "experience": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 20000
+          },
+          "remark": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 20000
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "project_id",
+          "product_id",
+          "name",
+          "status"
+        ]
+      }
+    },
+    "agreement_files": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "agreement_files",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "agreement_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "asset_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "agreement_id",
+          "asset_id"
+        ]
+      }
+    },
+    "model_tests": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "model_tests",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "test_module": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "inspection_surface": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "acceptance_criteria": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 20000
+          },
+          "parameter_snapshot": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 20000
+          },
+          "confirmation_status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191,
+            "enum": [
+              "待补充",
+              "待验证",
+              "经验建议",
+              "已验证",
+              null
+            ]
+          },
+          "test_method": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 20000
+          },
+          "expected_result": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 20000
+          },
+          "actual_result": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 20000
+          },
+          "project_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "model_name": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "model_version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "test_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "result": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191,
+            "enum": [
+              "待评价",
+              "效果好",
+              "一般",
+              "效果差",
+              null
+            ]
+          },
+          "prompt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "product_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "test_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "detection_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100,
+            "description": "单位：%"
+          },
+          "miss_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100,
+            "description": "单位：%"
+          },
+          "yield_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100,
+            "description": "单位：%"
+          },
+          "light_source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "camera": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "lens": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "working_distance_mm": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "单位：mm"
+          },
+          "product_spec": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "remark": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "name",
+          "model_name"
+        ]
+      }
+    },
+    "model_test_files": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "model_test_files",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "test_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "asset_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "role": {
+            "type": "string",
+            "maxLength": 191,
+            "enum": [
+              "input",
+              "result"
+            ],
+            "minLength": 1
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "test_id",
+          "asset_id",
+          "role"
+        ]
+      }
+    },
+    "technical_experiences": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "technical_experiences",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "experience_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191,
+            "enum": [
+              "标注规范",
+              "调试经验",
+              "原理解释",
+              "工具操作",
+              "其他",
+              null
+            ]
+          },
+          "conditions": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 20000
+          },
+          "confirmation_status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191,
+            "enum": [
+              "待补充",
+              "待验证",
+              "经验建议",
+              "已验证",
+              null
+            ]
+          },
+          "category": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "tags": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 20000,
+            "minLength": 1
+          },
+          "remark": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 20000
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "name",
+          "content"
+        ]
+      }
+    },
+    "technical_experience_files": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "technical_experience_files",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "experience_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "asset_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "video_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "experience_id"
+        ]
+      }
+    },
+    "document_types": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "document_types",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    "technical_objects": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "technical_objects",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "object_kind": {
+            "type": "string",
+            "maxLength": 191,
+            "enum": [
+              "相机",
+              "镜头",
+              "光源",
+              "工具",
+              "软件",
+              "模型",
+              "其他"
+            ],
+            "minLength": 1
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "specification": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 20000
+          },
+          "remark": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "name",
+          "object_kind"
+        ]
+      }
+    },
+    "entity_aliases": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "entity_aliases",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "entity_table": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "entity_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "entity_table",
+          "entity_id",
+          "name"
+        ]
+      }
+    },
+    "knowledge_links": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "knowledge_links",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "source_table": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "source_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "relation": {
+            "type": "string",
+            "maxLength": 191,
+            "enum": [
+              "适用于",
+              "测试对象",
+              "测试缺陷",
+              "使用设备",
+              "参考规范",
+              "测试依据",
+              "相关资料"
+            ],
+            "minLength": 1
+          },
+          "target_table": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "target_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "conditions": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 20000
+          },
+          "confirmation_status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191,
+            "enum": [
+              "待补充",
+              "待验证",
+              "经验建议",
+              "已验证",
+              null
+            ]
+          },
+          "evidence_test_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "evidence_document_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "evidence_locator": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "source_table",
+          "source_id",
+          "relation",
+          "target_table",
+          "target_id"
+        ]
+      }
+    }
+  }
+}

@@ -1,6 +1,8 @@
 # Only needed for MySQL mode; SQLite mode uses the Python standard library.
 PyMySQL>=1.1,<2
 Pillow>=10,<13
+# Cross-platform rendering of the first PDF page (Office converts via LibreOffice).
+PyMuPDF>=1.24,<2
 # Offline score-map rendering; model inference uses its own Python environment.
 numpy>=1.26,<3
 scipy>=1.11,<2

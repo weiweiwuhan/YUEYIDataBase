@@ -1,21 +1,23 @@
 'use strict';
 
 // Responses are scoped to the signed-in user, page visit and selected conversation.
-const assistantUI={epoch:0,view:0,owner:null,activeId:null,messages:[],history:[],status:null,busy:false,loading:false,draft:'',error:''};
+const assistantUI={epoch:0,view:0,owner:null,activeId:null,messages:[],history:[],status:null,busy:false,loading:false,draft:'',error:'',controller:null,progress:''};
 function assistantOwner(){return S.auth?String(S.auth.id)+':'+String(S.auth.username):null}
 function assistantVisible(){return page==='guide'&&!!document.querySelector('#assistant-root')}
 function assistantCurrent(epoch,view){return epoch===assistantUI.epoch&&assistantUI.owner===assistantOwner()&&assistantVisible()&&(view===undefined||view===assistantUI.view)}
 function assistantDate(value){if(!value)return '';const date=new Date(value);return Number.isNaN(date.getTime())?'':date.toLocaleString('zh-CN',{hour12:false})}
-function assistantMode(mode){return {model:'模型结合知识库回答',retrieval_only:'知识库检索结果',insufficient_evidence:'知识库依据不足',service_error:'模型服务暂时不可用'}[mode]||'知识库问答'}
+function assistantMode(mode){return {model:'模型结合知识库回答',retrieval_only:'知识库检索结果',insufficient_evidence:'知识库依据不足',clarification_needed:'需要确认对象',service_error:'模型服务暂时不可用'}[mode]||'知识库问答'}
 function assistantIsAdmin(){return S.auth?.role==='admin'}
 async function assistantPage(){
+ assistantUI.controller?.abort();
  const epoch=++assistantUI.epoch,owner=assistantOwner();
  if(owner!==assistantUI.owner){assistantUI.owner=owner;assistantUI.activeId=null;assistantUI.messages=[];assistantUI.history=[];assistantUI.status=null;assistantUI.draft=''}
  assistantUI.messages=assistantUI.messages.filter(item=>!item.pending);assistantUI.busy=false;assistantUI.loading=false;assistantUI.error='';const initialView=++assistantUI.view,initialConversation=assistantUI.activeId;
  if(!S.auth){$('#content').innerHTML=title('AI ASSISTANT','AI智能问答助手','根据售后经验、操作规范与技术经验查找处理办法。')+'<section class="panel"><h2>登录后使用智能问答</h2><p>登录账号可提问、查看自己的对话并反馈回答效果。管理员可以更新问答知识库。</p></section>';return}
- $('#content').innerHTML=title('AI ASSISTANT','AI智能问答助手','检索售后经验、操作规范与技术经验，回答附参考来源。')+`<div id="assistant-root"><section id="assistant-status" class="assistant-status" aria-live="polite">正在读取知识库状态…</section>${assistantIsAdmin()?'<details class="panel assistant-management"><summary>知识库管理</summary><p>已解决且有处理方案或经验的售后记录、操作规范与技术经验会自动进入本地知识库。也可以直接导入已有的问答 CSV 或 Excel，不需要绑定项目和产品。</p><div class="toolbar"><label class="assistant-file-label">选择知识库文件<input id="assistant-knowledge-file" type="file" accept=".csv,.xlsx"></label><button id="assistant-knowledge-import" class="primary">导入问答知识</button><button id="assistant-rebuild">更新知识索引</button></div><p class="subtle">支持 CSV、XLSX，单文件最多 5 MB。可使用“问题类型 / 问题描述 / 解决方案”表头。模型连接由服务器配置。</p><p id="assistant-management-message" role="status"></p></details>':''}<div class="assistant-workspace"><aside class="assistant-sidebar"><button id="assistant-new" class="primary">＋ 新建对话</button><h2>我的对话</h2><div id="assistant-history" aria-label="历史对话"></div></aside><section class="assistant-chat" aria-label="智能问答"><div id="assistant-messages" class="assistant-messages" aria-live="polite"></div><form id="assistant-form" class="assistant-composer"><label for="assistant-question">描述你遇到的问题</label><textarea id="assistant-question" maxlength="4000" rows="3" placeholder="例如：检测圆环时出现漏检，应从哪些位置排查？"></textarea><div class="assistant-compose-footer"><span class="subtle">Enter 发送 · Shift + Enter 换行；回答请结合现场确认。</span><button type="submit" id="assistant-send" class="primary">发送</button></div><p id="assistant-error" class="assistant-error" role="alert"></p></form></section></div></div>`;
+ $('#content').innerHTML=title('AI ASSISTANT','AI智能问答助手','检索售后经验、操作规范与技术经验，回答附参考来源。')+`<div id="assistant-root"><section id="assistant-status" class="assistant-status" aria-live="polite">正在读取知识库状态…</section>${assistantIsAdmin()?'<details class="panel assistant-management"><summary>知识库管理</summary><p>已解决且有处理方案或经验的售后记录、操作规范与技术经验会自动进入本地知识库。也可以直接导入已有的问答 CSV 或 Excel，不需要绑定项目和产品。</p><div class="toolbar"><label class="assistant-file-label">选择知识库文件<input id="assistant-knowledge-file" type="file" accept=".csv,.xlsx"></label><button id="assistant-knowledge-import" class="primary">导入问答知识</button><button id="assistant-rebuild">更新知识索引</button></div><p class="subtle">支持 CSV、XLSX，单文件最多 5 MB。可使用“问题类型 / 问题描述 / 解决方案”表头。模型连接由服务器配置。</p><p id="assistant-management-message" role="status"></p></details>':''}<div class="assistant-workspace"><aside class="assistant-sidebar"><button id="assistant-new" class="primary">＋ 新建对话</button><h2>我的对话</h2><div id="assistant-history" aria-label="历史对话"></div></aside><section class="assistant-chat" aria-label="智能问答"><div id="assistant-messages" class="assistant-messages" aria-live="polite"></div><form id="assistant-form" class="assistant-composer"><label for="assistant-question">描述你遇到的问题</label><textarea id="assistant-question" maxlength="4000" rows="3" placeholder="例如：检测圆环时出现漏检，应从哪些位置排查？"></textarea><div class="assistant-compose-footer"><span class="subtle">Enter 发送 · Shift + Enter 换行；回答请结合现场确认。</span><div><button type="button" id="assistant-stop" hidden>停止回答</button> <button type="submit" id="assistant-send" class="primary">发送</button></div></div><p id="assistant-error" class="assistant-error" role="alert"></p></form></section></div></div>`;
  $('#assistant-new').onclick=assistantNewConversation;
  $('#assistant-form').onsubmit=assistantSend;
+ $('#assistant-stop').onclick=()=>assistantUI.controller?.abort();
  $('#assistant-question').value=assistantUI.draft;
  $('#assistant-question').oninput=e=>{assistantUI.draft=e.target.value};
  $('#assistant-question').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('#assistant-form').requestSubmit()}};
@@ -41,37 +43,58 @@ function assistantSources(sources){
 }
 function assistantMessage(item,index){
  const user=`<article class="assistant-message assistant-user"><div class="assistant-message-label">你</div><div class="assistant-message-text">${esc(item.question||'')}</div></article>`;
- if(item.pending)return user;
+ if(item.pending&&!item.streaming)return user;
  const feedback=item.id!=null?`<div class="assistant-feedback"><span>这次回答有帮助吗？</span>${['helpful','unhelpful'].map(rating=>`<button type="button" data-feedback-index="${index}" data-rating="${rating}" class="${item.feedback?.rating===rating||item.feedback===rating?'active':''}">${rating==='helpful'?'有帮助':'需改进'}</button>`).join('')}<span class="assistant-feedback-status" id="assistant-feedback-${index}"></span></div>`:'';
- return user+`<article class="assistant-message assistant-answer"><div class="assistant-message-label">AI智能问答助手 <span>${esc(assistantMode(item.mode))}</span></div><div class="assistant-message-text">${esc(item.answer||'')}</div>${item.warning?`<p class="assistant-alert">${esc(item.warning)}</p>`:''}${assistantSources(item.sources)}${feedback}</article>`;
+ return user+`<article class="assistant-message assistant-answer"><div class="assistant-message-label">AI智能问答助手 <span>${esc(assistantMode(item.mode))}</span></div><div class="assistant-message-text" ${item.streaming?'id="assistant-live-answer"':''}>${esc(item.answer||'')}</div>${item.warning?`<p class="assistant-alert">${esc(item.warning)}</p>`:''}${assistantSources(item.sources)}${feedback}</article>`;
 }
 function assistantRenderMessages(){
  if(!assistantVisible())return;
  const messages=assistantUI.messages;
- $('#assistant-messages').innerHTML=(assistantUI.loading?'<p class="assistant-empty">正在加载对话…</p>':messages.length?messages.map(assistantMessage).join(''):'<div class="assistant-empty"><span class="assistant-empty-icon">✦</span><h2>把现场问题讲清楚，处理经验就在这里</h2><p>可以描述产品、缺陷现象、发生条件及已经尝试的处理方法。</p><div class="assistant-suggestions"><button type="button" data-suggestion="检测产品出现漏检，应该如何逐步排查？">产品漏检如何排查？</button><button type="button" data-suggestion="如何根据已有售后经验处理相机成像不稳定的问题？">相机成像不稳定怎么办？</button></div></div>')+(assistantUI.busy?'<div class="assistant-waiting" role="status"><span class="assistant-spinner"></span>正在检索知识并整理回答，请稍候…</div>':'');
+ $('#assistant-messages').innerHTML=(assistantUI.loading?'<p class="assistant-empty">正在加载对话…</p>':messages.length?messages.map(assistantMessage).join(''):'<div class="assistant-empty"><span class="assistant-empty-icon">✦</span><h2>把现场问题讲清楚，处理经验就在这里</h2><p>可以描述产品、缺陷现象、发生条件及已经尝试的处理方法。</p><div class="assistant-suggestions"><button type="button" data-suggestion="检测产品出现漏检，应该如何逐步排查？">产品漏检如何排查？</button><button type="button" data-suggestion="如何根据已有售后经验处理相机成像不稳定的问题？">相机成像不稳定怎么办？</button></div></div>')+(assistantUI.busy?'<div class="assistant-waiting" role="status"><span class="assistant-spinner"></span><span id="assistant-progress">'+esc(assistantUI.progress||'正在检索知识与适用条件…')+'</span></div>':'');
  $('#assistant-messages').querySelectorAll('[data-suggestion]').forEach(button=>{button.onclick=()=>{$('#assistant-question').value=button.dataset.suggestion;assistantUI.draft=button.dataset.suggestion;$('#assistant-question').focus()}});
  $('#assistant-messages').querySelectorAll('[data-feedback-index]').forEach(button=>{button.onclick=()=>assistantFeedback(Number(button.dataset.feedbackIndex),button.dataset.rating)});
  $('#assistant-question').disabled=assistantUI.loading;
- $('#assistant-send').disabled=assistantUI.busy||assistantUI.loading;$('#assistant-send').textContent=assistantUI.busy?'等待回答…':'发送';
+ $('#assistant-send').disabled=assistantUI.busy||assistantUI.loading;$('#assistant-send').textContent=assistantUI.busy?'回答中…':'发送';
+ $('#assistant-stop').hidden=!assistantUI.busy;
  $('#assistant-error').textContent=assistantUI.error;
  const container=$('#assistant-messages');container.scrollTop=container.scrollHeight;
 }
 function assistantNewConversation(){
- if(!assistantVisible())return;++assistantUI.view;assistantUI.activeId=null;assistantUI.messages=[];assistantUI.busy=false;assistantUI.loading=false;assistantUI.error='';assistantUI.draft='';$('#assistant-question').value='';assistantRenderHistory();assistantRenderMessages();$('#assistant-question').focus();
+ if(!assistantVisible())return;assistantUI.controller?.abort();++assistantUI.view;assistantUI.activeId=null;assistantUI.messages=[];assistantUI.busy=false;assistantUI.loading=false;assistantUI.error='';assistantUI.draft='';$('#assistant-question').value='';assistantRenderHistory();assistantRenderMessages();$('#assistant-question').focus();
 }
 async function assistantSelectConversation(id){
+ assistantUI.controller?.abort();
  const epoch=assistantUI.epoch,view=++assistantUI.view;assistantUI.activeId=String(id);assistantUI.messages=[];assistantUI.busy=false;assistantUI.loading=true;assistantUI.error='';assistantUI.draft='';$('#assistant-question').value='';assistantRenderHistory();assistantRenderMessages();
  try{const value=await request('/api/assistant/history?'+new URLSearchParams({id}));if(!assistantCurrent(epoch,view))return;assistantUI.messages=Array.isArray(value.messages)?value.messages:[]}
  catch(error){if(assistantCurrent(epoch,view))assistantUI.error=error.message}
  finally{if(assistantCurrent(epoch,view)){assistantUI.loading=false;assistantRenderMessages()}}
 }
+async function assistantReadStream(payload,onEvent,signal){
+ const response=await fetch('/api/assistant/chat-stream',{method:'POST',headers:{'Content-Type':'application/json','X-AOI-Client':'local-v1'},body:JSON.stringify(payload),signal});
+ if(!response.ok){let value;try{value=await response.json()}catch{}throw Error(value?.error||'问答连接失败，请重试')}
+ if(!response.body?.getReader)throw Error('浏览器不支持流式读取，请更新浏览器后重试');
+ const reader=response.body.getReader(),decoder=new TextDecoder('utf-8');let buffer='',done=false,total=0;
+ try{
+  while(true){const part=await reader.read();buffer+=decoder.decode(part.value||new Uint8Array(),{stream:!part.done});total+=part.value?.length||0;if(total>3000000)throw Error('回答数据过大');buffer=buffer.replace(/\r\n/g,'\n');let end;
+   while((end=buffer.indexOf('\n\n'))>=0){const frame=buffer.slice(0,end);buffer=buffer.slice(end+2);let type='message';const data=[];for(const line of frame.split('\n')){if(line.startsWith('event:'))type=line.slice(6).trim();else if(line.startsWith('data:'))data.push(line.slice(5).trimStart())}if(!data.length)continue;const value=JSON.parse(data.join('\n'));if(type==='error')throw Error(value.error||'回答中断，请重试');onEvent(type,value);if(type==='done')done=true}
+   if(done)break;if(part.done)throw Error('回答连接已中断，请重试');
+  }
+ }finally{try{await reader.cancel()}catch{}reader.releaseLock()}
+}
 async function assistantSend(event){
  event.preventDefault();if(!assistantVisible()||assistantUI.busy||assistantUI.loading)return;const question=$('#assistant-question').value.trim();if(!question){assistantUI.error='请先输入问题';assistantRenderMessages();return}if(question.length>4000){assistantUI.error='问题最多 4000 个字符';assistantRenderMessages();return}
- const epoch=assistantUI.epoch,view=++assistantUI.view,conversationId=assistantUI.activeId;
- const pending={question,pending:true};assistantUI.messages.push(pending);assistantUI.busy=true;assistantUI.error='';assistantUI.draft='';$('#assistant-question').value='';assistantRenderMessages();
- try{const value=await request('/api/assistant/chat',{question,conversation_id:conversationId});if(!assistantCurrent(epoch,view))return;Object.assign(pending,value,{id:value.question_id,pending:false});assistantUI.activeId=value.conversation_id;const previous=assistantUI.history.find(item=>String(item.id)===String(value.conversation_id));const updated={id:value.conversation_id,title:previous?.title||question.slice(0,60),updated_at:new Date().toISOString()};assistantUI.history=[updated,...assistantUI.history.filter(item=>String(item.id)!==String(value.conversation_id))];assistantRenderHistory();if(value.index_version!=null&&assistantUI.status)assistantUI.status.index_version=value.index_version}
- catch(error){if(!assistantCurrent(epoch,view))return;assistantUI.messages=assistantUI.messages.filter(item=>item!==pending);assistantUI.error=error.message;if(!$('#assistant-question').value.trim()){assistantUI.draft=question;$('#assistant-question').value=question}}
- finally{if(assistantCurrent(epoch,view)){assistantUI.busy=false;assistantRenderMessages()}}
+ const epoch=assistantUI.epoch,view=++assistantUI.view,conversationId=assistantUI.activeId,controller=new AbortController();assistantUI.controller=controller;
+ const pending={question,pending:true,streaming:true,answer:'',sources:[]};assistantUI.messages.push(pending);assistantUI.busy=true;assistantUI.progress='正在检索知识与适用条件…';assistantUI.error='';assistantUI.draft='';$('#assistant-question').value='';assistantRenderMessages();
+ try{await assistantReadStream({question,conversation_id:conversationId},(kind,value)=>{
+  if(!assistantCurrent(epoch,view)){controller.abort();return}
+  if(kind==='status'){assistantUI.progress=value.message||'正在生成回答…';const progress=$('#assistant-progress');if(progress)progress.textContent=assistantUI.progress}
+  if(kind==='sources'){pending.sources=value.sources||[];assistantUI.activeId=value.conversation_id;assistantRenderMessages()}
+  if(kind==='delta'){pending.answer+=value.text||'';const root=$('#assistant-messages'),atBottom=root.scrollHeight-root.scrollTop-root.clientHeight<100;const answer=$('#assistant-live-answer');if(answer)answer.textContent=pending.answer;if(atBottom)root.scrollTop=root.scrollHeight}
+  if(kind==='reset'){pending.answer=value.answer||'';pending.mode=value.mode;pending.warning=value.warning;assistantRenderMessages()}
+  if(kind==='done'){Object.assign(pending,value,{id:value.question_id,pending:false,streaming:false});assistantUI.activeId=value.conversation_id;const previous=assistantUI.history.find(item=>String(item.id)===String(value.conversation_id));const updated={id:value.conversation_id,title:previous?.title||question.slice(0,60),updated_at:new Date().toISOString()};assistantUI.history=[updated,...assistantUI.history.filter(item=>String(item.id)!==String(value.conversation_id))];assistantRenderHistory();if(value.index_version!=null&&assistantUI.status){assistantUI.status.index_version=value.index_version;assistantUI.status.dirty=false;if(value.documents!=null)assistantUI.status.documents=value.documents;assistantRenderStatus()}}
+ },controller.signal)}
+ catch(error){if(!assistantCurrent(epoch,view))return;if(pending.answer){pending.pending=false;pending.streaming=false;pending.mode='service_error';pending.warning=error.name==='AbortError'?'已停止回答，以上内容未完整生成。':'回答中断，以上内容未完整生成，请重试。';delete pending.id}else{assistantUI.messages=assistantUI.messages.filter(item=>item!==pending)}assistantUI.error=error.name==='AbortError'?'已停止回答':error.message;if(!$('#assistant-question').value.trim()){assistantUI.draft=question;$('#assistant-question').value=question}}
+ finally{if(assistantCurrent(epoch,view)){assistantUI.busy=false;assistantUI.controller=null;assistantRenderMessages()}}
 }
 async function assistantFeedback(index,rating){
  const epoch=assistantUI.epoch,view=assistantUI.view,item=assistantUI.messages[index];if(!item?.id)return;

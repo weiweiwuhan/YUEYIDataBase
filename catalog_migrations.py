@@ -12,6 +12,7 @@ def extend(c,execute,mysql):
       'videos': [('asset_id','BIGINT' if mysql else 'INTEGER','assets'),('preview_asset_id','BIGINT' if mysql else 'INTEGER','assets')],
       'technical_experiences':[(n,'MEDIUMTEXT' if n=='conditions' and mysql else 'VARCHAR(191)' if mysql else 'TEXT',None) for n in ('experience_type','conditions','confirmation_status')],
       'model_tests':[(n,'MEDIUMTEXT' if n in ('parameter_snapshot','acceptance_criteria') and mysql else 'VARCHAR(191)' if mysql else 'TEXT',None) for n in ('inspection_surface','acceptance_criteria','parameter_snapshot','confirmation_status')],
+      'knowledge_links':[('evidence_document_id','BIGINT' if mysql else 'INTEGER','technical_agreements'),('evidence_locator','VARCHAR(1024)' if mysql else 'TEXT',None)],
     }
     for table,fields in extensions.items():
         existing=columns(c,execute,mysql,table)

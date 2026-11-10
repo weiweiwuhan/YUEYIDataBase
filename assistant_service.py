@@ -50,7 +50,9 @@ class AssistantService:
             docs.append({'id':'technical_experiences:'+str(r['id']),'source_type':'technical_experiences','source_id':r['id'],'title':r['name'],'text':'\n'.join(f'{k}：{v}' for k,v in parts if v),'category':r.get('category') or '技术经验','created_by':r.get('created_by') or ''})
         from knowledge_graph import graph,relation_documents
         connection=self.connect()
-        try:docs.extend(relation_documents(graph(connection,self.execute)))
+        try:
+            self.graph_data=graph(connection,self.execute)
+            docs.extend(relation_documents(self.graph_data))
         finally:connection.close()
         docs=self._chunks(docs)
         if len(docs)>MAX_DOCUMENTS or sum(len(d['text'])+len(d['title']) for d in docs)>MAX_INDEX_CHARS:raise ValueError('知识库超过当前索引容量，请分库维护或清理不再使用的资料')
@@ -71,13 +73,18 @@ class AssistantService:
             docs,fingerprint,counts=self._sources()
             if fingerprint!=self.sync_hash or not self.rag.status().get('documents') and docs:
                 self.rag.rebuild(docs);self._write(self.sync_file,{'hash':fingerprint});self.sync_hash=fingerprint
-    def chat(self,user,question,conversation_id=None):
+    def chat(self,user,question,conversation_id=None,emit=None):
+        question=self.rag.validate_chat_request(user,question,conversation_id)
         self.ensure_current()
-        from knowledge_graph import graph,relation_documents,neighborhood
-        c=self.connect()
-        try:data=graph(c,self.execute)
-        finally:c.close()
-        text=str(question).casefold();matches={n['key'] for n in data['nodes'] if any(len(name)>1 and name.casefold() in text for name in [n['label']]+n['aliases'])}
+        from knowledge_graph import relation_documents,neighborhood,resolve_entities,scoped_source_filter
+        with self.lock:data=self.graph_data
+        text=str(question).casefold();matches,ambiguities=resolve_entities(data,question)
+        if ambiguities:
+            lines=['找到同名或同别名的多个对象，请补充规格、版本或完整对象编号后再查询：']
+            for ambiguity in ambiguities[:5]:
+                lines.append('“'+ambiguity['term']+'”可能指：')
+                for item in ambiguity['candidates'][:10]:lines.append('• '+item['name']+' '+item['detail']+'（'+item['key']+'）')
+            return self.rag.chat(user,question,conversation_id,emit=emit,answer_override=('clarification_needed','\n'.join(lines)),source_filter=lambda sources:[])
         related=set(matches)
         for key in sorted(matches)[:10]:
             table,rid=key.split(':');related.update(n['key'] for n in neighborhood(data,table,rid,2)['nodes'])
@@ -86,7 +93,7 @@ class AssistantService:
         structural.sort(key=lambda d:(d['source_id'] not in matches,not d['source_id'].startswith(preferred+':') if preferred else False,d['source_id']))
         for d in structural:
             d['text']=self.rag._excerpt(d['text'],question,3200);d['index_version']=self.rag.status()['version'];d['score']=None
-        return self.rag.chat(user,question,conversation_id,structural[:3])
+        return self.rag.chat(user,question,conversation_id,structural[:5],emit=emit,source_filter=scoped_source_filter(data,matches,question))
     def import_knowledge(self,user,content,filename):
         incoming=knowledge_documents(content,filename)
         with self.lock:

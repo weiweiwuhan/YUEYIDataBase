@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS `product_categories` (
   `updated_by` VARCHAR(191),
   `updated_at` VARCHAR(191),
   FOREIGN KEY (`parent_id`) REFERENCES `product_categories` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`parent_id` IS NULL OR `parent_id` >= 0),
   UNIQUE (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -90,7 +91,9 @@ CREATE TABLE IF NOT EXISTS `products` (
   `updated_by` VARCHAR(191),
   `updated_at` VARCHAR(191),
   FOREIGN KEY (`category_id`) REFERENCES `product_categories` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`category_id` IS NULL OR `category_id` >= 0),
   FOREIGN KEY (`material_id`) REFERENCES `materials` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`material_id` IS NULL OR `material_id` >= 0),
   CHECK (`diameter_mm` IS NULL OR `diameter_mm` >= 0),
   CHECK (`length_mm` IS NULL OR `length_mm` >= 0),
   UNIQUE (`code`)
@@ -114,7 +117,9 @@ CREATE TABLE IF NOT EXISTS `assets` (
   `updated_at` VARCHAR(191),
   CHECK (`asset_type` IN ('image', 'archive', 'engineering', 'annotation', 'document', 'other')),
   FOREIGN KEY (`preview_asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`preview_asset_id` IS NULL OR `preview_asset_id` >= 0),
   FOREIGN KEY (`storage_location_id`) REFERENCES `storage_locations` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`storage_location_id` IS NULL OR `storage_location_id` >= 0),
   CHECK (`storage_mode` IN ('file', 'archive_member')),
   CHECK (`file_size` IS NULL OR `file_size` >= 0),
   CHECK (`status` IN ('available', 'unverified', 'missing', 'pending', 'failed'))
@@ -136,6 +141,7 @@ CREATE TABLE IF NOT EXISTS `images` (
   `updated_by` VARCHAR(191),
   `updated_at` VARCHAR(191),
   FOREIGN KEY (`asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`asset_id` IS NULL OR `asset_id` >= 0),
   CHECK (`width` IS NULL OR `width` >= 0),
   CHECK (`height` IS NULL OR `height` >= 0),
   CHECK (`channels` IS NULL OR `channels` >= 0),
@@ -159,6 +165,7 @@ CREATE TABLE IF NOT EXISTS `engineering_projects` (
   `updated_by` VARCHAR(191),
   `updated_at` VARCHAR(191),
   FOREIGN KEY (`asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`asset_id` IS NULL OR `asset_id` >= 0),
   CHECK (`image_count` IS NULL OR `image_count` >= 0),
   UNIQUE (`asset_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -172,7 +179,9 @@ CREATE TABLE IF NOT EXISTS `project_products` (
   `updated_by` VARCHAR(191),
   `updated_at` VARCHAR(191),
   FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`project_id` IS NULL OR `project_id` >= 0),
   FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`product_id` IS NULL OR `product_id` >= 0),
   UNIQUE (`project_id`, `product_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -185,7 +194,9 @@ CREATE TABLE IF NOT EXISTS `project_assets` (
   `updated_by` VARCHAR(191),
   `updated_at` VARCHAR(191),
   FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`project_id` IS NULL OR `project_id` >= 0),
   FOREIGN KEY (`asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`asset_id` IS NULL OR `asset_id` >= 0),
   UNIQUE (`project_id`, `asset_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -198,7 +209,9 @@ CREATE TABLE IF NOT EXISTS `asset_products` (
   `updated_by` VARCHAR(191),
   `updated_at` VARCHAR(191),
   FOREIGN KEY (`asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`asset_id` IS NULL OR `asset_id` >= 0),
   FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`product_id` IS NULL OR `product_id` >= 0),
   UNIQUE (`asset_id`, `product_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -211,7 +224,9 @@ CREATE TABLE IF NOT EXISTS `product_processes` (
   `updated_by` VARCHAR(191),
   `updated_at` VARCHAR(191),
   FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`product_id` IS NULL OR `product_id` >= 0),
   FOREIGN KEY (`process_id`) REFERENCES `process_types` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`process_id` IS NULL OR `process_id` >= 0),
   UNIQUE (`product_id`, `process_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -225,7 +240,9 @@ CREATE TABLE IF NOT EXISTS `image_defects` (
   `updated_by` VARCHAR(191),
   `updated_at` VARCHAR(191),
   FOREIGN KEY (`image_id`) REFERENCES `images` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`image_id` IS NULL OR `image_id` >= 0),
   FOREIGN KEY (`defect_type_id`) REFERENCES `defect_types` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`defect_type_id` IS NULL OR `defect_type_id` >= 0),
   UNIQUE (`image_id`, `defect_type_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -239,7 +256,9 @@ CREATE TABLE IF NOT EXISTS `asset_defects` (
   `updated_by` VARCHAR(191),
   `updated_at` VARCHAR(191),
   FOREIGN KEY (`asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`asset_id` IS NULL OR `asset_id` >= 0),
   FOREIGN KEY (`defect_type_id`) REFERENCES `defect_types` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`defect_type_id` IS NULL OR `defect_type_id` >= 0),
   UNIQUE (`asset_id`, `defect_type_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -254,7 +273,9 @@ CREATE TABLE IF NOT EXISTS `asset_relations` (
   `updated_by` VARCHAR(191),
   `updated_at` VARCHAR(191),
   FOREIGN KEY (`source_asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`source_asset_id` IS NULL OR `source_asset_id` >= 0),
   FOREIGN KEY (`target_asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`target_asset_id` IS NULL OR `target_asset_id` >= 0),
   CHECK (`relation_type` IN ('contains', 'paired', 'annotation', 'version')),
   UNIQUE (`source_asset_id`, `target_asset_id`, `relation_type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -271,6 +292,7 @@ CREATE TABLE IF NOT EXISTS `image_embeddings` (
   `updated_by` VARCHAR(191),
   `updated_at` VARCHAR(191),
   FOREIGN KEY (`image_id`) REFERENCES `images` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`image_id` IS NULL OR `image_id` >= 0),
   CHECK (`dimension` IS NULL OR `dimension` >= 0),
   UNIQUE (`image_id`, `model_name`, `model_version`),
   UNIQUE (`vector_key`)
@@ -292,9 +314,13 @@ CREATE TABLE IF NOT EXISTS `videos` (
   `updated_by` VARCHAR(191),
   `updated_at` VARCHAR(191),
   FOREIGN KEY (`image_id`) REFERENCES `images` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`image_id` IS NULL OR `image_id` >= 0),
   FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`project_id` IS NULL OR `project_id` >= 0),
   FOREIGN KEY (`asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`asset_id` IS NULL OR `asset_id` >= 0),
   FOREIGN KEY (`preview_asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`preview_asset_id` IS NULL OR `preview_asset_id` >= 0),
   CHECK (`file_size` IS NULL OR `file_size` >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -313,6 +339,7 @@ CREATE TABLE IF NOT EXISTS `technical_agreements` (
   `updated_by` VARCHAR(191),
   `updated_at` VARCHAR(191),
   FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`project_id` IS NULL OR `project_id` >= 0),
   UNIQUE (`code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -325,7 +352,9 @@ CREATE TABLE IF NOT EXISTS `agreement_products` (
   `updated_by` VARCHAR(191),
   `updated_at` VARCHAR(191),
   FOREIGN KEY (`agreement_id`) REFERENCES `technical_agreements` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`agreement_id` IS NULL OR `agreement_id` >= 0),
   FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`product_id` IS NULL OR `product_id` >= 0),
   UNIQUE (`agreement_id`, `product_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -346,7 +375,9 @@ CREATE TABLE IF NOT EXISTS `after_sales` (
   `updated_by` VARCHAR(191),
   `updated_at` VARCHAR(191),
   FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`project_id` IS NULL OR `project_id` >= 0),
   FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`product_id` IS NULL OR `product_id` >= 0),
   CHECK (`status` IN ('待处理', '处理中', '已解决'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -359,7 +390,9 @@ CREATE TABLE IF NOT EXISTS `agreement_files` (
   `updated_by` VARCHAR(191),
   `updated_at` VARCHAR(191),
   FOREIGN KEY (`agreement_id`) REFERENCES `technical_agreements` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`agreement_id` IS NULL OR `agreement_id` >= 0),
   FOREIGN KEY (`asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`asset_id` IS NULL OR `asset_id` >= 0),
   UNIQUE (`asset_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -395,10 +428,12 @@ CREATE TABLE IF NOT EXISTS `model_tests` (
   `created_at` VARCHAR(191),
   `updated_by` VARCHAR(191),
   `updated_at` VARCHAR(191),
-  CHECK (`confirmation_status` IN ('待验证', '经验建议', '已验证', '待补充')),
+  CHECK (`confirmation_status` IN ('待补充', '待验证', '经验建议', '已验证')),
   FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`project_id` IS NULL OR `project_id` >= 0),
   CHECK (`result` IN ('待评价', '效果好', '一般', '效果差')),
   FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`product_id` IS NULL OR `product_id` >= 0),
   CHECK (`test_count` IS NULL OR `test_count` >= 0),
   CHECK (`detection_rate` IS NULL OR `detection_rate` <= 100),
   CHECK (`detection_rate` IS NULL OR `detection_rate` >= 0),
@@ -419,7 +454,9 @@ CREATE TABLE IF NOT EXISTS `model_test_files` (
   `updated_by` VARCHAR(191),
   `updated_at` VARCHAR(191),
   FOREIGN KEY (`test_id`) REFERENCES `model_tests` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`test_id` IS NULL OR `test_id` >= 0),
   FOREIGN KEY (`asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`asset_id` IS NULL OR `asset_id` >= 0),
   CHECK (`role` IN ('input', 'result')),
   UNIQUE (`asset_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -439,7 +476,7 @@ CREATE TABLE IF NOT EXISTS `technical_experiences` (
   `updated_by` VARCHAR(191),
   `updated_at` VARCHAR(191),
   CHECK (`experience_type` IN ('标注规范', '调试经验', '原理解释', '工具操作', '其他')),
-  CHECK (`confirmation_status` IN ('待验证', '经验建议', '已验证', '待补充'))
+  CHECK (`confirmation_status` IN ('待补充', '待验证', '经验建议', '已验证'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `technical_experience_files` (
@@ -452,8 +489,11 @@ CREATE TABLE IF NOT EXISTS `technical_experience_files` (
   `updated_by` VARCHAR(191),
   `updated_at` VARCHAR(191),
   FOREIGN KEY (`experience_id`) REFERENCES `technical_experiences` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`experience_id` IS NULL OR `experience_id` >= 0),
   FOREIGN KEY (`asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`asset_id` IS NULL OR `asset_id` >= 0),
   FOREIGN KEY (`video_id`) REFERENCES `videos` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`video_id` IS NULL OR `video_id` >= 0),
   UNIQUE (`experience_id`, `asset_id`),
   UNIQUE (`experience_id`, `video_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -506,6 +546,8 @@ CREATE TABLE IF NOT EXISTS `knowledge_links` (
   `conditions` MEDIUMTEXT,
   `confirmation_status` VARCHAR(191),
   `evidence_test_id` BIGINT,
+  `evidence_document_id` BIGINT,
+  `evidence_locator` VARCHAR(1024),
   `created_by` VARCHAR(191),
   `created_at` VARCHAR(191),
   `updated_by` VARCHAR(191),
@@ -513,7 +555,10 @@ CREATE TABLE IF NOT EXISTS `knowledge_links` (
   CHECK (`source_id` IS NULL OR `source_id` >= 0),
   CHECK (`relation` IN ('适用于', '测试对象', '测试缺陷', '使用设备', '参考规范', '测试依据', '相关资料')),
   CHECK (`target_id` IS NULL OR `target_id` >= 0),
-  CHECK (`confirmation_status` IN ('待验证', '经验建议', '已验证', '待补充')),
+  CHECK (`confirmation_status` IN ('待补充', '待验证', '经验建议', '已验证')),
   FOREIGN KEY (`evidence_test_id`) REFERENCES `model_tests` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`evidence_test_id` IS NULL OR `evidence_test_id` >= 0),
+  FOREIGN KEY (`evidence_document_id`) REFERENCES `technical_agreements` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`evidence_document_id` IS NULL OR `evidence_document_id` >= 0),
   UNIQUE (`source_table`, `source_id`, `relation`, `target_table`, `target_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
