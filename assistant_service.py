@@ -46,8 +46,12 @@ class AssistantService:
         files_by_experience={}
         for attachment in attachments:files_by_experience.setdefault(attachment['experience_id'],[]).append(attachment['name'])
         for r in technical:
-            parts=[('分类',r.get('category')),('关键词',r.get('tags')),('规范与经验',r.get('content')),('备注',r.get('remark')),('关联资料','、'.join(files_by_experience.get(r['id'],[])))]
+            parts=[('分类',r.get('category')),('关键词',r.get('tags')),('规范与经验',r.get('content')),('备注',r.get('remark')),('经验类型',r.get('experience_type')),('适用条件与限制',r.get('conditions')),('确认状态',r.get('confirmation_status') or '待补充'),('关联资料','、'.join(files_by_experience.get(r['id'],[])))]
             docs.append({'id':'technical_experiences:'+str(r['id']),'source_type':'technical_experiences','source_id':r['id'],'title':r['name'],'text':'\n'.join(f'{k}：{v}' for k,v in parts if v),'category':r.get('category') or '技术经验','created_by':r.get('created_by') or ''})
+        from knowledge_graph import graph,relation_documents
+        connection=self.connect()
+        try:docs.extend(relation_documents(graph(connection,self.execute)))
+        finally:connection.close()
         docs=self._chunks(docs)
         if len(docs)>MAX_DOCUMENTS or sum(len(d['text'])+len(d['title']) for d in docs)>MAX_INDEX_CHARS:raise ValueError('知识库超过当前索引容量，请分库维护或清理不再使用的资料')
         fingerprint=hashlib.sha256(json.dumps(docs,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
@@ -68,7 +72,21 @@ class AssistantService:
             if fingerprint!=self.sync_hash or not self.rag.status().get('documents') and docs:
                 self.rag.rebuild(docs);self._write(self.sync_file,{'hash':fingerprint});self.sync_hash=fingerprint
     def chat(self,user,question,conversation_id=None):
-        self.ensure_current();return self.rag.chat(user,question,conversation_id)
+        self.ensure_current()
+        from knowledge_graph import graph,relation_documents,neighborhood
+        c=self.connect()
+        try:data=graph(c,self.execute)
+        finally:c.close()
+        text=str(question).casefold();matches={n['key'] for n in data['nodes'] if any(len(name)>1 and name.casefold() in text for name in [n['label']]+n['aliases'])}
+        related=set(matches)
+        for key in sorted(matches)[:10]:
+            table,rid=key.split(':');related.update(n['key'] for n in neighborhood(data,table,rid,2)['nodes'])
+        structural=[d for d in relation_documents(data) if d['source_id'] in related]
+        preferred='technical_experiences' if any(w in text for w in ('规范','经验','操作')) else 'model_tests' if any(w in text for w in ('测试','检出率','结果')) else ''
+        structural.sort(key=lambda d:(d['source_id'] not in matches,not d['source_id'].startswith(preferred+':') if preferred else False,d['source_id']))
+        for d in structural:
+            d['text']=self.rag._excerpt(d['text'],question,3200);d['index_version']=self.rag.status()['version'];d['score']=None
+        return self.rag.chat(user,question,conversation_id,structural[:3])
     def import_knowledge(self,user,content,filename):
         incoming=knowledge_documents(content,filename)
         with self.lock:

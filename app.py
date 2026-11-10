@@ -46,6 +46,13 @@ def cached_snapshot():
             finally:c.close()
         return STATE_CACHE['data']
 def commit_write(c,handler):
+    if getattr(ACTOR,'promote_media',False):
+        from catalog_migrations import promote
+        promote(c,execute,save);ACTOR.promote_media=False
+    if getattr(ACTOR,'storage_dirty',False):
+        from catalog_storage import sync_files
+        sync_files(c,execute,UPLOADS,handler._renamed)
+        ACTOR.storage_dirty=False
     actor=getattr(ACTOR,'username',None) or 'system'
     execute(c,'INSERT INTO audit_events (actor,action,created_at) VALUES (?,?,?)',(actor,urlparse(handler.path).path,datetime.now(timezone.utc).isoformat(timespec='microseconds')))
     c.commit();invalidate_state()
@@ -89,6 +96,7 @@ def validate(c,t,r,exclude=None):
             else:
                 v=str(v);maxlen=1024 if n in ('product_spec','prompt','requirements','symptom','cause','resolution','experience','remark','relative_path','member_path','root_path','thumbnail_path','local_path') else 191
                 if n=='extracted_text':maxlen=100000
+                if n in ('conditions','parameter_snapshot','acceptance_criteria','specification'):maxlen=20000
                 if (t=='technical_experiences' and n in ('content','remark')) or (t=='model_tests' and n in ('test_method','expected_result','actual_result')):maxlen=20000
                 if t=='after_sales' and n in ('symptom','cause','resolution','experience','remark'):maxlen=20000
                 if len(v)>maxlen:raise ValueError(f['label']+'内容过长')
@@ -115,7 +123,16 @@ def validate(c,t,r,exclude=None):
             q=execute(c,'SELECT asset_type FROM assets WHERE id=?',(out['source_asset_id'],)).fetchone()
             if not q or q['asset_type']!='archive':raise ValueError('contains 来源必须是压缩包')
             if not out.get('member_path'):raise ValueError('请填写包内路径')
-    if t=='videos' and not out.get('project_id') and not out.get('image_id'):raise ValueError('请选择绑定项目')
+    if t=='videos' and not out.get('project_id') and not out.get('image_id') and not out.get('asset_id'):raise ValueError('请选择绑定项目或已登记视频资源')
+    if t=='knowledge_links':
+        from knowledge_graph import validate_relation
+        validate_relation(c,execute,out)
+    if t=='entity_aliases':
+        from knowledge_graph import entity
+        entity(c,execute,out['entity_table'],out['entity_id'])
+    if t in ('assets','videos') and out.get('preview_asset_id'):
+        preview=execute(c,'SELECT asset_type FROM assets WHERE id=?',(out['preview_asset_id'],)).fetchone()
+        if not preview or preview['asset_type']!='image':raise ValueError('封面必须是图片资源')
     if t=='technical_experience_files':
         if bool(out.get('asset_id'))==bool(out.get('video_id')):raise ValueError('请选择一种文档或视频资料')
         if out.get('asset_id'):
@@ -133,12 +150,18 @@ def save(c,t,r,rid=None):
     now=datetime.now(timezone.utc).isoformat(timespec='microseconds');actor=getattr(ACTOR,'username',None) or 'system'
 
     if t=='videos' and rid:
-        old=execute(c,'SELECT image_id FROM videos WHERE id=?',(rid,)).fetchone()
+        old=execute(c,'SELECT image_id,asset_id,preview_asset_id FROM videos WHERE id=?',(rid,)).fetchone()
         if old:r={**dict(old),**r}
     if t=='model_tests' and rid:
         old=execute(c,'SELECT project_id,result,miss_rate FROM model_tests WHERE id=?',(rid,)).fetchone()
         if old:r={**dict(old),**r}
+    if existing:
+        if t=='assets' and 'preview_asset_id' not in r:r['preview_asset_id']=existing['preview_asset_id']
+        if t=='model_tests' and not getattr(ACTOR,'recapture_snapshot',False) and existing['parameter_snapshot']:r['parameter_snapshot']=existing['parameter_snapshot']
     r=validate(c,t,r,rid)
+    if t=='technical_experience_files':ACTOR.promote_media=True
+    if t in ('assets','videos','technical_agreements','agreement_files'):ACTOR.storage_dirty=True
+    if t=='technical_agreements' and r.get('document_type') and not execute(c,'SELECT id FROM document_types WHERE name=?',(r['document_type'],)).fetchone():save(c,'document_types',{'name':r['document_type']})
     unchanged=existing and all(existing[k]==v for k,v in r.items() if k not in stamps)
     r.update(created_by=existing['created_by'] if existing else actor,created_at=existing['created_at'] if existing else now,updated_by=existing['updated_by'] if unchanged else actor,updated_at=existing['updated_at'] if unchanged else now)
     if rid:
@@ -163,6 +186,8 @@ def initialize():
             if s.strip().startswith('CREATE INDEX'):
                 pending_indexes.append(s);continue
             execute(c,s)
+        from catalog_migrations import extend
+        extend(c,execute,MYSQL)
         fields=[x['Field'] for x in execute(c,'SHOW COLUMNS FROM engineering_projects').fetchall()] if MYSQL else [x['name'] for x in execute(c,'PRAGMA table_info(engineering_projects)').fetchall()]
         if 'image_count' not in fields:execute(c,'ALTER TABLE engineering_projects ADD COLUMN image_count '+('BIGINT' if MYSQL else 'INTEGER'))
         if 'local_path' not in fields:execute(c,'ALTER TABLE engineering_projects ADD COLUMN local_path '+('VARCHAR(1024)' if MYSQL else 'TEXT'))
@@ -203,7 +228,17 @@ def initialize():
         for statement in pending_indexes:execute(c,statement)
         import auth
         auth.initialize(c,execute,MYSQL)
-        c.commit()
+        from catalog_migrations import promote
+        promote(c,execute,save)
+        moved=[]
+        try:
+            from catalog_storage import sync_files
+            sync_files(c,execute,UPLOADS,moved);c.commit()
+        except Exception:
+            c.rollback()
+            for old,new in reversed(moved):
+                if new.exists():old.parent.mkdir(parents=True,exist_ok=True);new.rename(old)
+            raise
     finally:c.close()
 def mysql_data(c):
     def lit(v):
@@ -286,6 +321,23 @@ class Handler(BaseHTTPRequestHandler):
                     with path.open('rb') as source:shutil.copyfileobj(source,self.wfile)
                     return
                 raise ValueError('未知离线测试接口')
+            if p.path=='/api/knowledge/graph':
+                from knowledge_graph import graph,neighborhood
+                c=connect();q=parse_qs(p.query);data=graph(c,execute)
+                if q.get('table'):data=neighborhood(data,q['table'][0],int(q.get('id',['0'])[0]),min(2,max(1,int(q.get('depth',['1'])[0]))))
+                self.reply(data);return
+            if p.path=='/api/preview':
+                from media_preview import preview_bytes
+                c=connect();q=parse_qs(p.query);data,ctype=preview_bytes(c,execute,UPLOADS,THUMBS,q.get('table',['assets'])[0],int(q.get('id',['0'])[0]))
+                self.reply(data,ctype=ctype);return
+            if p.path=='/api/document-view':
+                c=connect();q=parse_qs(p.query);a,path=local_asset(c,int(q.get('id',['0'])[0]))
+                suffix=path.suffix.lower()
+                if suffix not in ('.pdf','.txt','.md','.csv'):raise ValueError('此格式请下载或上传封面预览')
+                ctype='application/pdf' if suffix=='.pdf' else 'text/plain; charset=utf-8'
+                self.send_response(200);self.send_header('Content-Type',ctype);self.send_header('Content-Length',str(path.stat().st_size));self.send_header('X-Content-Type-Options','nosniff');self.send_header('Content-Security-Policy',"sandbox; default-src 'none'");self.end_headers()
+                with path.open('rb') as f:shutil.copyfileobj(f,self.wfile)
+                return
             if p.path=='/api/video':
                 import mimetypes,re
                 c=connect();vid=int(parse_qs(p.query).get('id',['0'])[0])
@@ -355,7 +407,7 @@ class Handler(BaseHTTPRequestHandler):
             if p.path=='/api/version':
                 self.reply(json.loads((ROOT/'version.json').read_text('utf-8')));return
             if p.path=='/api/state':
-                c=connect();self.reply(dict(schema=T,data=cached_snapshot(),engine='MySQL' if MYSQL else 'SQLite',version='1.6.0',release=json.loads((ROOT/'version.json').read_text('utf-8')),auth=self.identity(c)));return
+                c=connect();self.reply(dict(schema=T,data=cached_snapshot(),engine='MySQL' if MYSQL else 'SQLite',version='1.7.0',release=json.loads((ROOT/'version.json').read_text('utf-8')),auth=self.identity(c)));return
             if p.path=='/api/sql':
                 c=connect();self.require(c,True);self.reply(mysql_data(c) if parse_qs(p.query).get('data')==['1'] else ddl(True),ctype='text/plain; charset=utf-8');return
             if p.path in ('/','/app.js','/style.css','/offline.js','/offline.css'):
@@ -371,7 +423,7 @@ class Handler(BaseHTTPRequestHandler):
             self.reply({'error':'跨来源写入已拒绝'},403);return
         if self.headers.get('X-AOI-Client')!='local-v1':self.reply({'error':'缺少本地客户端标识'},403);return
         ACTOR.username=None
-        c=None;created=[];renamed=[];write_locked=False
+        c=None;created=[];renamed=[];write_locked=False;self._renamed=renamed;ACTOR.storage_dirty=False;ACTOR.recapture_snapshot=False;ACTOR.promote_media=False
         try:
             self.connection.settimeout(120)
             n=int(self.headers.get('Content-Length','0'))
@@ -441,6 +493,11 @@ class Handler(BaseHTTPRequestHandler):
                     if n>256*1024*1024:raise ValueError('测试图片单文件最多 256 MB')
                     if not execute(c,'SELECT id FROM model_tests WHERE id=?',(int(q.get('test_id',['0'])[0]),)).fetchone():raise ValueError('请先保存测试记录')
                     if q.get('role',[''])[0] not in ('input','result'):raise ValueError('请选择原图或效果图')
+                if q.get('kind')==['preview']:
+                    owner=q.get('owner_table',[''])[0]
+                    if owner not in ('assets','videos'):raise ValueError('封面对象类型无效')
+                    if n>32*1024*1024:raise ValueError('封面图片最多 32 MB')
+                    if not execute(c,f'SELECT id FROM `{owner}` WHERE id=?',(int(q.get('owner_id',['0'])[0]),)).fetchone():raise ValueError('封面对象不存在')
                 if q.get('kind')==['technical_experience']:
                     video=Path(name).suffix.lower() in ('.mp4','.webm','.mov','.avi','.mkv','.m4v')
                     if n>(1024*1024*1024 if video else 256*1024*1024):raise ValueError('文档最多 256 MB，视频最多 1 GB')
@@ -473,11 +530,17 @@ class Handler(BaseHTTPRequestHandler):
                 engineering=q.get('kind',[''])[0]=='engineering'
                 agreement=q.get('kind')==['agreement']
                 if agreement or experience:kind='document'
+                if q.get('kind')==['preview']:
+                    image_info(dest);kind='image'
                 if engineering:kind='engineering'
                 if q.get('image_only')==['1'] and kind!='image':raise ValueError('请选择图片文件')
                 info=image_info(dest) if kind=='image' else {}
                 aid=save(c,'assets',dict(asset_type=kind,file_name=name,storage_location_id=lid,relative_path=dest.name,storage_mode='file',file_size=n,sha256=h.hexdigest(),status='available'))
-                if experience:save(c,'technical_experience_files',dict(experience_id=int(q['experience_id'][0]),asset_id=aid))
+                if experience:
+                    from catalog_migrations import promote
+                    save(c,'technical_experience_files',dict(experience_id=int(q['experience_id'][0]),asset_id=aid));promote(c,execute,save)
+                if q.get('kind')==['preview']:
+                    owner=q['owner_table'][0];owner_id=int(q['owner_id'][0]);record=dict(execute(c,f'SELECT * FROM `{owner}` WHERE id=?',(owner_id,)).fetchone());record['preview_asset_id']=aid;save(c,owner,record,owner_id)
                 if modeltest:save(c,'model_test_files',dict(test_id=int(q['test_id'][0]),asset_id=aid,role=q['role'][0]))
                 if agreement:
                     save(c,'agreement_files',dict(agreement_id=int(q.get('agreement_id',['0'])[0]),asset_id=aid))
@@ -486,7 +549,7 @@ class Handler(BaseHTTPRequestHandler):
                     if pid:save(c,'project_assets',dict(project_id=pid,asset_id=a))
                     if prod:save(c,'asset_products',dict(asset_id=a,product_id=prod))
                 links(aid);count=0
-                if kind=='image' and not modeltest:
+                if kind=='image' and not modeltest and q.get('kind')!=['preview']:
                     iid=save(c,'images',dict(asset_id=aid,quality_label='unknown',annotation_status='unlabeled',**info))
                     eid=int(q.get('engineering_id',['0'])[0])
                     if eid:
@@ -523,8 +586,12 @@ class Handler(BaseHTTPRequestHandler):
                     dest=UPLOADS/(uuid.uuid4().hex+'_'+name)
                     path.rename(dest);renamed.append((path,dest))
                     execute(c,'UPDATE assets SET file_name=?,relative_path=?,updated_by=?,updated_at=? WHERE id=?',(name,dest.name,getattr(ACTOR,'username',None) or 'system',datetime.now(timezone.utc).isoformat(timespec='microseconds'),a['id']))
+                    ACTOR.storage_dirty=True
                     result=dict(ok=True,name=name)
                 else:
+                    if execute(c,"SELECT id FROM knowledge_links WHERE target_table='assets' AND target_id=?",(a['id'],)).fetchone():raise ValueError('该图片被知识关联引用，请先解除关联')
+                    execute(c,"DELETE FROM knowledge_links WHERE source_table='assets' AND source_id=?",(a['id'],))
+                    execute(c,"DELETE FROM entity_aliases WHERE entity_table='assets' AND entity_id=?",(a['id'],))
                     path=(UPLOADS/(a['relative_path'] or '')).resolve()
                     if not path.is_relative_to(UPLOADS.resolve()):raise ValueError('图片路径无效')
                     if path.is_file():
@@ -536,6 +603,9 @@ class Handler(BaseHTTPRequestHandler):
                     result=dict(ok=True)
             elif p.path=='/api/model-test-delete':
                 test_id=int(payload['id'])
+                if execute(c,"SELECT id FROM knowledge_links WHERE (target_table='model_tests' AND target_id=?) OR evidence_test_id=?",(test_id,test_id)).fetchone():raise ValueError('该测试被知识关联引用，请先解除关联')
+                execute(c,"DELETE FROM knowledge_links WHERE source_table='model_tests' AND source_id=?",(test_id,))
+                execute(c,"DELETE FROM entity_aliases WHERE entity_table='model_tests' AND entity_id=?",(test_id,))
                 execute(c,'DELETE FROM model_test_files WHERE test_id=?',(test_id,))
                 execute(c,'DELETE FROM model_tests WHERE id=?',(test_id,));result=dict(ok=True)
             elif p.path=='/api/image-defects':
@@ -562,6 +632,7 @@ class Handler(BaseHTTPRequestHandler):
                 dest=UPLOADS/(uuid.uuid4().hex+'_'+name)
                 path.rename(dest);renamed.append((path,dest))
                 execute(c,'UPDATE assets SET file_name=?,relative_path=?,updated_by=?,updated_at=? WHERE id=?',(name,dest.name,getattr(ACTOR,'username',None) or 'system',datetime.now(timezone.utc).isoformat(timespec='microseconds'),a['id']))
+                ACTOR.storage_dirty=True
                 result=dict(ok=True,name=name)
             elif p.path=='/api/local-engineering':
                 path=str(payload.get('local_path','')).strip().strip('"')
@@ -598,6 +669,27 @@ class Handler(BaseHTTPRequestHandler):
                     if old:execute(c,'DELETE FROM asset_relations WHERE id=?',(old['id'],))
                 elif not old:save(c,'asset_relations',dict(source_asset_id=en['asset_id'],target_asset_id=image['asset_id'],relation_type='paired'))
                 result=dict(ok=True)
+            elif p.path=='/api/knowledge/save':
+                t=payload['table']
+                if t not in ('technical_experiences','model_tests'):raise ValueError('不支持的知识录入类型')
+                rid=payload.get('id');record=dict(payload['record'])
+                if rid:
+                    old=execute(c,f'SELECT * FROM `{t}` WHERE id=?',(rid,)).fetchone()
+                    if not old:raise ValueError('记录不存在')
+                    if 'expected_updated_at' not in payload or old['updated_at']!=payload['expected_updated_at']:raise ConflictError('记录已被修改，请刷新后重新编辑')
+                    if t=='model_tests' and not payload.get('recapture_snapshot'):record['parameter_snapshot']=old['parameter_snapshot']
+                links=payload.get('links',[])
+                if not isinstance(links,list) or len(links)>200:raise ValueError('每条记录最多关联 200 个对象')
+                if t=='model_tests' and (not record.get('parameter_snapshot') or payload.get('recapture_snapshot')):
+                    from knowledge_graph import entity
+                    devices=[entity(c,execute,'technical_objects',link['target_id']) for link in links if link.get('relation')=='使用设备' and link.get('target_table')=='technical_objects']
+                    record['parameter_snapshot']=json.dumps({'设备':devices,'记录参数':{k:record.get(k) for k in ('model_name','model_version','light_source','camera','lens','working_distance_mm','prompt')},'保存时间':datetime.now(timezone.utc).isoformat()},ensure_ascii=False)
+                ACTOR.recapture_snapshot=bool(payload.get('recapture_snapshot'))
+                rid=save(c,t,record,rid)
+                execute(c,'DELETE FROM knowledge_links WHERE source_table=? AND source_id=?',(t,rid))
+                for link in links:save(c,'knowledge_links',{**link,'source_table':t,'source_id':rid})
+                if t=='technical_experiences' and record.get('confirmation_status')=='已验证' and not any(link.get('relation')=='测试依据' for link in links):raise ValueError('已验证的经验请提供测试依据')
+                result=dict(ok=True,id=rid)
             elif p.path=='/api/save':
                 t=payload['table']
                 if t not in TABLES:raise ValueError('未知表')
@@ -608,6 +700,11 @@ class Handler(BaseHTTPRequestHandler):
             elif p.path=='/api/delete':
                 t=payload['table']
                 if t not in TABLES:raise ValueError('未知表')
+                if t in ('model_tests','technical_experiences','technical_objects','products','product_categories','defect_types','projects','technical_agreements','videos','assets','images','engineering_projects','after_sales'):
+                    referenced=execute(c,'SELECT id FROM knowledge_links WHERE (target_table=? AND target_id=?) OR evidence_test_id=?',(t,int(payload['id']),int(payload['id']) if t=='model_tests' else -1)).fetchone()
+                    if referenced:raise ValueError('该对象仍被知识关联引用，请先解除关联')
+                    execute(c,'DELETE FROM knowledge_links WHERE source_table=? AND source_id=?',(t,int(payload['id'])))
+                    execute(c,'DELETE FROM entity_aliases WHERE entity_table=? AND entity_id=?',(t,int(payload['id'])))
                 if t=='technical_experiences':execute(c,'DELETE FROM technical_experience_files WHERE experience_id=?',(int(payload['id']),))
                 execute(c,f'DELETE FROM `{t}` WHERE id=?',(int(payload['id']),));result=dict(ok=True)
             elif p.path=='/api/seed':seed(c);result=dict(ok=True)
@@ -625,7 +722,8 @@ class Handler(BaseHTTPRequestHandler):
             commit_write(c,self);self.reply(result)
         except Exception as e:
             if c:c.rollback()
-            for old,new in reversed(renamed):new.rename(old)
+            for old,new in reversed(renamed):
+                if new.exists():old.parent.mkdir(parents=True,exist_ok=True);new.rename(old)
             for f in created:f.unlink(missing_ok=True)
             self.reply({'error':str(e)},403 if isinstance(e,PermissionError) else 409 if isinstance(e,ConflictError) else 400)
         finally:

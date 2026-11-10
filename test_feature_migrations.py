@@ -34,4 +34,34 @@ c.close()
             env=dict(os.environ,AOI_DATA=data,DB_ENGINE='sqlite',PYTHONDONTWRITEBYTECODE='1')
             subprocess.run([sys.executable,'-c',code],cwd=Path(__file__).parent,env=env,check=True,capture_output=True)
 
+    def test_v16_upgrade_promotes_attachments_and_categorizes_existing_files(self):
+        code='''
+import app,sqlite3
+from pathlib import Path
+c=app.connect();c.executescript(Path('test_fixtures/schema_v1_6.sqlite.sql').read_text())
+c.execute("INSERT INTO technical_experiences (id,name,content) VALUES (1,'旧经验','原始步骤')")
+for aid,name,body in [(1,'旧规范.pdf',b'%PDF-preserved'),(2,'旧视频.mp4',b'video-preserved')]:
+    rel='old-uuid-'+name;(app.UPLOADS/rel).write_bytes(body)
+    c.execute("INSERT INTO assets (id,asset_type,file_name,storage_mode,relative_path,status) VALUES (?,'document',?,'file',?,'available')",(aid,name,rel))
+    c.execute('INSERT INTO technical_experience_files (experience_id,asset_id) VALUES (1,?)',(aid,))
+c.commit();c.close()
+app.initialize();app.initialize()
+c=app.connect()
+assert c.execute('SELECT count(*) FROM technical_agreements').fetchone()[0]==1
+assert c.execute('SELECT count(*) FROM videos').fetchone()[0]==1
+assert c.execute('SELECT count(*) FROM technical_experience_files').fetchone()[0]==2
+assert c.execute('SELECT project_id FROM technical_agreements').fetchone()[0] is None
+for aid,kind,body in [(1,'documents',b'%PDF-preserved'),(2,'videos',b'video-preserved')]:
+    a=c.execute('SELECT * FROM assets WHERE id=?',(aid,)).fetchone()
+    assert a['relative_path'].startswith(kind+'/')
+    assert Path(a['relative_path']).name==a['file_name']
+    assert (app.UPLOADS/a['relative_path']).read_bytes()==body
+assert not c.execute('PRAGMA foreign_key_check').fetchall()
+c.close()
+'''
+        with tempfile.TemporaryDirectory() as data:
+            env=dict(os.environ,AOI_DATA=data,DB_ENGINE='sqlite',PYTHONDONTWRITEBYTECODE='1')
+            result=subprocess.run([sys.executable,'-c',code],cwd=Path(__file__).parent,env=env,capture_output=True)
+            self.assertEqual(result.returncode,0,result.stderr.decode())
+
 if __name__=='__main__':unittest.main()

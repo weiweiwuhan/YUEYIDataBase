@@ -1,7 +1,7 @@
 // Uses isolated sample data; no browser or user database changes.
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const elements=new Map();
-const el=key=>{if(!elements.has(key))elements.set(key,{value:'',innerHTML:'',textContent:'',style:{},addEventListener:()=>{},querySelectorAll:()=>[]});return elements.get(key)};
+const el=key=>{if(!elements.has(key))elements.set(key,{value:'',innerHTML:'',textContent:'',style:{},addEventListener:()=>{},querySelectorAll:()=>[],insertAdjacentHTML:function(position,html){this.innerHTML+=html}});return elements.get(key)};
 const context=vm.createContext({document:{querySelector:el,addEventListener:()=>{}},setTimeout:()=>{},MutationObserver:class {observe(){}},console});
 let source=fs.readFileSync(__dirname+'/static/app.js','utf8');
 source=source.replace(/;refresh\(\)\.catch\(e=>\{.*?\}\);/,';');
@@ -19,12 +19,12 @@ assert.equal(run("matchingImageResults({q:'唯一工程检索词'}).length"),lin
 assert.equal(run('matchingImageResults({defect:1}).length'),sample.image_defects.filter(r=>r.defect_type_id===1).length);
 run('search()');
 assert(!el('#content').innerHTML.includes('id="stype"'));
-assert.equal((el('#results').innerHTML.match(/<article /g)||[]).length,sample.images.length);
+assert.equal((el('#results').innerHTML.match(/<article /g)||[]).length,sample.images.length+run('matchingResourceResults({}).length'));
 assert(!el('#results').innerHTML.includes('编辑资源'));
 assert(el('#results').innerHTML.includes('data-searchvideo="1"'));
 assert(el('#results').innerHTML.includes('data-searchimage='));
-assert(el('#searchcount').textContent.includes('张图片'));
-console.log('PASS: image-only results, engineering/video keyword search, confirmed-image defect filter, linked video actions, thumbnail cards, image counts, no resource type filter');
+assert(el('#searchcount').textContent.includes('条资料'));
+console.log('PASS: mixed resource results, engineering/video keyword search, confirmed-image defect filter, linked video actions, thumbnail cards, image counts, no resource type filter');
 
 const expected=[...sample.images].sort((a,b)=>Number(sample.image_defects.some(d=>d.image_id===a.id))-Number(sample.image_defects.some(d=>d.image_id===b.id))||b.id-a.id).map(i=>i.id);
 assert.deepEqual(Array.from(run('matchingImageResults({}).map(r=>r.i.id)')),expected);
@@ -35,7 +35,7 @@ const stats=run('dashboardStats()');
 assert.equal(stats.engineering,3);assert.equal(stats.total,120);assert.equal(stats.unknown,1);assert.equal(stats.openSales,2);assert.equal(stats.uploaded,sample.images.length);
 console.log('PASS: dashboard manual image totals, zero counts, missing counts and pending after-sales');
 
-run("extraDialog=html=>{globalThis.lastDialog=html;return {querySelector:()=>({}),close:()=>{}}};table='engineering_projects';edit(1)");
+run("extraDialog=html=>{globalThis.lastDialog=html;return {querySelector:()=>({addEventListener:()=>{}}),querySelectorAll:()=>[],close:()=>{}}};table='engineering_projects';edit(1)");
 assert(context.lastDialog.includes('name="image_count"'));
 assert(context.lastDialog.includes('value="120"'));
 assert(!context.lastDialog.includes('name="software_name"'));
@@ -101,3 +101,11 @@ run("S.data.technical_experiences=[{id:1,name:'标注规范',content:'边界复�
 assert(el('#technical-list').innerHTML.includes('边界复核'));
 run('technicalExperienceEditor(1)');assert(context.lastDialog.includes('name="content"'));assert(!context.lastDialog.includes('name="project_id"'));
 console.log('PASS: software module filtering, measurement data and independent technical knowledge forms');
+
+run("S.data.assets.push({id:999,asset_type:'document',file_name:'通用规范.pdf'});S.data.technical_agreements=[{id:99,name:'通用标注指南',document_type:'作业指引'}];S.data.agreement_files=[{agreement_id:99,asset_id:999}];S.data.videos=[{id:98,name:'通用标注视频',file_name:'说明.mp4'}];S.data.technical_experiences=[{id:88,name:'规范经验',content:'边界复核'}];S.data.technical_experience_files=[{experience_id:88,asset_id:999}];S.data.knowledge_links=[{source_table:'technical_experiences',source_id:88,relation:'适用于',target_table:'products',target_id:1}];S.data.document_types=[{name:'自定义规范'}]");
+assert.equal(run("matchingResourceResults({q:'通用标注指南'}).length"),1);
+assert.equal(run("matchingResourceResults({q:'通用标注视频'}).length"),1);
+assert.equal(run("matchingResourceResults({q:'通用标注指南',product:1}).length"),1);
+assert.equal(run("matchingResourceResults({q:'通用标注指南',product:999}).length"),0);
+assert(run('documentTypeNames().includes("自定义规范")'));
+console.log('PASS: independent document/video discovery, explicit related-product filtering and reusable document categories');

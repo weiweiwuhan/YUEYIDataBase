@@ -37,7 +37,7 @@ function assistantRenderHistory(){
 }
 function assistantSources(sources){
  if(!Array.isArray(sources)||!sources.length)return '';
- return `<details class="assistant-sources"><summary>参考依据 · ${sources.length} 条</summary>${sources.map((source,index)=>`<article class="assistant-source"><strong>${index+1}. ${esc(source.title||'知识片段')}</strong><small>${esc(source.source_type==='after_sales'?'售后经验':source.source_type==='technical_experiences'?'操作规范与技术经验':source.source_type==='knowledge'?'问答知识':'知识库')} ${source.source_id!=null?'#'+esc(source.source_id):''}</small><p>${esc(source.text||'')}</p></article>`).join('')}</details>`;
+ return `<details class="assistant-sources"><summary>参考依据 · ${sources.length} 条</summary>${sources.map((source,index)=>`<article class="assistant-source"><strong>${index+1}. ${esc(source.title||'知识片段')}</strong><small>${esc(source.source_type==='after_sales'?'售后经验':source.source_type==='technical_experiences'?'操作规范与技术经验':source.source_type==='knowledge_graph'?'知识关联与测试依据':source.source_type==='knowledge'?'问答知识':'知识库')} ${source.source_id!=null?'#'+esc(source.source_id):''}</small><p>${esc(source.text||'')}</p></article>`).join('')}</details>`;
 }
 function assistantMessage(item,index){
  const user=`<article class="assistant-message assistant-user"><div class="assistant-message-label">你</div><div class="assistant-message-text">${esc(item.question||'')}</div></article>`;

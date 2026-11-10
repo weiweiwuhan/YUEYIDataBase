@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory() as tmp:
         for _ in range(100):
             try:s=req('/api/state');break
             except Exception:time.sleep(.05)
-        assert len(s['schema'])==27 and all(not x for x in s['data'].values())
+        assert len(s['schema'])==31 and all(not x for x in s['data'].values())
         def denied(path,data=None,raw=None):
             try:req(path,data,raw);assert False,'Expected forbidden '+path
             except urllib.error.HTTPError as e:assert e.code==403
@@ -258,7 +258,7 @@ with tempfile.TemporaryDirectory() as tmp:
         # Full JSON round trip on existing records.
         assert req('/api/import',{'data':old})['count']==sum(map(len,old.values()))
         sql=opener.open('http://127.0.0.1:18765/api/sql?data=1').read().decode()
-        assert sql.count('CREATE TABLE IF NOT EXISTS')==27 and 'START TRANSACTION;' in sql
+        assert sql.count('CREATE TABLE IF NOT EXISTS')==31 and 'START TRANSACTION;' in sql
         assert 'CONVERT(X\'' in sql and 'FOREIGN KEY' in sql
         accounts=req('/api/auth/users')
         editor_id=next(u['id'] for u in accounts if u['username']=='editor')
@@ -271,5 +271,5 @@ with tempfile.TemporaryDirectory() as tmp:
             except Exception:time.sleep(.05)
         assert after==old
         db=sqlite3.connect(Path(tmp)/'aoi.db');assert db.execute('PRAGMA integrity_check').fetchone()[0]=='ok';assert not db.execute('PRAGMA foreign_key_check').fetchall()
-        print('PASS: authentication, guest/editor/admin permissions, agreements, after-sales, 27 tables, seed, CRUD, FK protection, category cycle, transaction rollback, ZIP registration, upload rollback, JSON round trip, SQL export, restart persistence, DB integrity, real image upload, thumbnail, full-resolution preview, engineering binding/download/unbind, invalid-image rollback.')
+        print('PASS: authentication, guest/editor/admin permissions, agreements, after-sales, 31 tables, seed, CRUD, FK protection, category cycle, transaction rollback, ZIP registration, upload rollback, JSON round trip, SQL export, restart persistence, DB integrity, real image upload, thumbnail, full-resolution preview, engineering binding/download/unbind, invalid-image rollback.')
     finally:p.terminate();p.wait()

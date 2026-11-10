@@ -1,4 +1,4 @@
--- AOI Industrial Asset Catalog | 27 tables
+-- AOI Industrial Asset Catalog | 31 tables
 
 -- Non-destructive DDL: existing tables are preserved.
 
@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS `products` (
 CREATE TABLE IF NOT EXISTS `assets` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `asset_type` VARCHAR(191) NOT NULL,
+  `preview_asset_id` BIGINT,
   `file_name` VARCHAR(191) NOT NULL,
   `storage_location_id` BIGINT,
   `relative_path` VARCHAR(1024),
@@ -112,6 +113,7 @@ CREATE TABLE IF NOT EXISTS `assets` (
   `updated_by` VARCHAR(191),
   `updated_at` VARCHAR(191),
   CHECK (`asset_type` IN ('image', 'archive', 'engineering', 'annotation', 'document', 'other')),
+  FOREIGN KEY (`preview_asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   FOREIGN KEY (`storage_location_id`) REFERENCES `storage_locations` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CHECK (`storage_mode` IN ('file', 'archive_member')),
   CHECK (`file_size` IS NULL OR `file_size` >= 0),
@@ -278,6 +280,8 @@ CREATE TABLE IF NOT EXISTS `videos` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `image_id` BIGINT,
   `project_id` BIGINT,
+  `asset_id` BIGINT,
+  `preview_asset_id` BIGINT,
   `name` VARCHAR(191) NOT NULL,
   `file_name` VARCHAR(191) NOT NULL,
   `relative_path` VARCHAR(1024) NOT NULL,
@@ -289,12 +293,14 @@ CREATE TABLE IF NOT EXISTS `videos` (
   `updated_at` VARCHAR(191),
   FOREIGN KEY (`image_id`) REFERENCES `images` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  FOREIGN KEY (`asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  FOREIGN KEY (`preview_asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CHECK (`file_size` IS NULL OR `file_size` >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `technical_agreements` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  `project_id` BIGINT NOT NULL,
+  `project_id` BIGINT,
   `document_type` VARCHAR(191),
   `code` VARCHAR(191) NOT NULL,
   `name` VARCHAR(191) NOT NULL,
@@ -361,6 +367,10 @@ CREATE TABLE IF NOT EXISTS `model_tests` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(191) NOT NULL,
   `test_module` VARCHAR(191),
+  `inspection_surface` VARCHAR(191),
+  `acceptance_criteria` MEDIUMTEXT,
+  `parameter_snapshot` MEDIUMTEXT,
+  `confirmation_status` VARCHAR(191),
   `test_method` MEDIUMTEXT,
   `expected_result` MEDIUMTEXT,
   `actual_result` MEDIUMTEXT,
@@ -385,6 +395,7 @@ CREATE TABLE IF NOT EXISTS `model_tests` (
   `created_at` VARCHAR(191),
   `updated_by` VARCHAR(191),
   `updated_at` VARCHAR(191),
+  CHECK (`confirmation_status` IN ('待验证', '经验建议', '已验证', '待补充')),
   FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CHECK (`result` IN ('待评价', '效果好', '一般', '效果差')),
   FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
@@ -416,6 +427,9 @@ CREATE TABLE IF NOT EXISTS `model_test_files` (
 CREATE TABLE IF NOT EXISTS `technical_experiences` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(191) NOT NULL,
+  `experience_type` VARCHAR(191),
+  `conditions` MEDIUMTEXT,
+  `confirmation_status` VARCHAR(191),
   `category` VARCHAR(191),
   `tags` VARCHAR(191),
   `content` MEDIUMTEXT NOT NULL,
@@ -423,7 +437,9 @@ CREATE TABLE IF NOT EXISTS `technical_experiences` (
   `created_by` VARCHAR(191),
   `created_at` VARCHAR(191),
   `updated_by` VARCHAR(191),
-  `updated_at` VARCHAR(191)
+  `updated_at` VARCHAR(191),
+  CHECK (`experience_type` IN ('标注规范', '调试经验', '原理解释', '工具操作', '其他')),
+  CHECK (`confirmation_status` IN ('待验证', '经验建议', '已验证', '待补充'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `technical_experience_files` (
@@ -440,4 +456,64 @@ CREATE TABLE IF NOT EXISTS `technical_experience_files` (
   FOREIGN KEY (`video_id`) REFERENCES `videos` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   UNIQUE (`experience_id`, `asset_id`),
   UNIQUE (`experience_id`, `video_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `document_types` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `name` VARCHAR(191) NOT NULL,
+  `created_by` VARCHAR(191),
+  `created_at` VARCHAR(191),
+  `updated_by` VARCHAR(191),
+  `updated_at` VARCHAR(191),
+  UNIQUE (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `technical_objects` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `name` VARCHAR(191) NOT NULL,
+  `object_kind` VARCHAR(191) NOT NULL,
+  `version` VARCHAR(191),
+  `specification` MEDIUMTEXT,
+  `remark` VARCHAR(1024),
+  `created_by` VARCHAR(191),
+  `created_at` VARCHAR(191),
+  `updated_by` VARCHAR(191),
+  `updated_at` VARCHAR(191),
+  CHECK (`object_kind` IN ('相机', '镜头', '光源', '工具', '软件', '模型', '其他')),
+  UNIQUE (`name`, `object_kind`, `version`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `entity_aliases` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `entity_table` VARCHAR(191) NOT NULL,
+  `entity_id` BIGINT NOT NULL,
+  `name` VARCHAR(191) NOT NULL,
+  `created_by` VARCHAR(191),
+  `created_at` VARCHAR(191),
+  `updated_by` VARCHAR(191),
+  `updated_at` VARCHAR(191),
+  CHECK (`entity_id` IS NULL OR `entity_id` >= 0),
+  UNIQUE (`entity_table`, `entity_id`, `name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `knowledge_links` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `source_table` VARCHAR(191) NOT NULL,
+  `source_id` BIGINT NOT NULL,
+  `relation` VARCHAR(191) NOT NULL,
+  `target_table` VARCHAR(191) NOT NULL,
+  `target_id` BIGINT NOT NULL,
+  `conditions` MEDIUMTEXT,
+  `confirmation_status` VARCHAR(191),
+  `evidence_test_id` BIGINT,
+  `created_by` VARCHAR(191),
+  `created_at` VARCHAR(191),
+  `updated_by` VARCHAR(191),
+  `updated_at` VARCHAR(191),
+  CHECK (`source_id` IS NULL OR `source_id` >= 0),
+  CHECK (`relation` IN ('适用于', '测试对象', '测试缺陷', '使用设备', '参考规范', '测试依据', '相关资料')),
+  CHECK (`target_id` IS NULL OR `target_id` >= 0),
+  CHECK (`confirmation_status` IN ('待验证', '经验建议', '已验证', '待补充')),
+  FOREIGN KEY (`evidence_test_id`) REFERENCES `model_tests` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  UNIQUE (`source_table`, `source_id`, `relation`, `target_table`, `target_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
