@@ -487,6 +487,338 @@
         ]
       }
     },
+    "catalog_categories": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "catalog_categories",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "source_system": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "source_category_id": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 1024,
+            "minLength": 1
+          },
+          "parent_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "category_path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 4000
+          },
+          "source_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2048
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "source_system",
+          "source_category_id",
+          "name"
+        ]
+      }
+    },
+    "catalog_products": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "catalog_products",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "source_system": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "source_product_id": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "bn": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "record_scope": {
+            "type": "string",
+            "maxLength": 191,
+            "enum": [
+              "series",
+              "article"
+            ],
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 1024,
+            "minLength": 1
+          },
+          "head_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "drive_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "thread_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "material": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "material_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "manufacturing_material": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "property_class": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "surface_treatment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "standards": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "category_path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 4000
+          },
+          "source_url": {
+            "type": "string",
+            "maxLength": 2048,
+            "minLength": 1
+          },
+          "fetched_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "remark": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "raw_attributes_json": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 20000
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "source_system",
+          "source_product_id",
+          "record_scope",
+          "name",
+          "source_url"
+        ]
+      }
+    },
+    "catalog_product_categories": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "catalog_product_categories",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "catalog_product_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "catalog_category_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "catalog_product_id",
+          "catalog_category_id"
+        ]
+      }
+    },
     "assets": {
       "type": "array",
       "items": {

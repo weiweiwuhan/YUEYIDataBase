@@ -111,11 +111,21 @@ def validate(c,t,r,exclude=None):
             if f['choices'] and v not in f['choices']:raise ValueError(f['label']+'选项不合法')
         out[n]=v
     rid=exclude or out.get('id')
-    if t=='product_categories' and out.get('parent_id'):
+    if t in ('product_categories','catalog_categories') and out.get('parent_id'):
         seen={rid} if rid else set();p=out['parent_id']
         while p:
             if p in seen:raise ValueError('分类不能形成循环')
-            seen.add(p);q=execute(c,'SELECT parent_id FROM product_categories WHERE id=?',(p,)).fetchone();p=q['parent_id'] if q else None
+            seen.add(p);q=execute(c,f'SELECT parent_id FROM `{t}` WHERE id=?',(p,)).fetchone();p=q['parent_id'] if q else None
+    if t=='catalog_categories' and out.get('parent_id'):
+        parent=execute(c,'SELECT source_system FROM catalog_categories WHERE id=?',(out['parent_id'],)).fetchone()
+        if not parent or parent['source_system']!=out['source_system']:raise ValueError('目录父分类必须属于同一来源系统')
+    if t=='catalog_product_categories':
+        product=execute(c,'SELECT source_system FROM catalog_products WHERE id=?',(out.get('catalog_product_id'),)).fetchone()
+        category=execute(c,'SELECT source_system FROM catalog_categories WHERE id=?',(out.get('catalog_category_id'),)).fetchone()
+        if not product or not category or product['source_system']!=category['source_system']:raise ValueError('目录产品与分类必须存在且属于同一来源系统')
+    if t in ('catalog_products','catalog_categories'):
+        from catalog_import import _valid_url
+        _valid_url(out.get('source_url'))
     if t=='assets':
         if out.get('relative_path'):
             p=out['relative_path'].replace('\\','/')
@@ -458,6 +468,24 @@ class Handler(BaseHTTPRequestHandler):
             n=int(self.headers.get('Content-Length','0'))
             if n>1024*1024*1024:raise ValueError('单次上传上限 1 GB')
             p=urlparse(self.path);c=connect()
+            if p.path in ('/api/catalog/import-preview','/api/catalog/import'):
+                user=self.require(c,True);q=parse_qs(p.query)
+                from catalog_import import MAX_UPLOAD_BYTES,prepare_import,public_plan,validate_preview_token,apply_import
+                if not 0<n<=MAX_UPLOAD_BYTES:raise ValueError('目录文件须为 1 字节至 20 MB')
+                content=self.rfile.read(n)
+                if len(content)!=n:raise ValueError('目录文件上传不完整')
+                filename=q.get('name',[''])[0].replace('\\','/').split('/')[-1]
+                mode=q.get('mode',['fill_missing'])[0];owner=str(user['id'])
+                if p.path.endswith('import-preview'):
+                    if not MYSQL:c.execute('BEGIN')
+                    plan=prepare_import(c,execute,content,filename,mode,owner);self.reply(public_plan(plan));return
+                WRITE_LOCK.acquire();write_locked=True;c.rollback()
+                if not MYSQL:c.execute('BEGIN IMMEDIATE')
+                plan=prepare_import(c,execute,content,filename,mode,owner)
+                validate_preview_token(q.get('preview_token',[''])[0],plan,owner)
+                if not plan['selected_count'] and not plan['category_add_count'] and not plan['category_update_count']:raise ValueError('没有选择“是”的待导入记录')
+                result=apply_import(c,execute,save,plan);commit_write(c,self)
+                self.reply({'ok':True,**result,'errors':[]});return
             if p.path.startswith('/api/assistant/') or p.path.startswith('/api/after-sales/import'):
                 admin=p.path in ('/api/assistant/rebuild','/api/assistant/knowledge-import','/api/after-sales/import','/api/after-sales/import-preview')
                 user=self.require(c,admin);c.close();c=None;engine=get_assistant_engine();q=parse_qs(p.query)
@@ -604,6 +632,8 @@ class Handler(BaseHTTPRequestHandler):
                             count+=1
                 commit_write(c,self);self.reply(dict(ok=True,asset_id=aid,members=count,agreement_id=int(q['agreement_id'][0]) if agreement else None));return
             payload=json.loads(self.rfile.read(n) or b'{}')
+            if not isinstance(payload,dict):raise ValueError('请求必须是对象')
+            if p.path=='/api/save' and payload.get('table') in ('catalog_categories','catalog_products','catalog_product_categories'):self.require(c,True)
             WRITE_LOCK.acquire();write_locked=True;c.rollback()
             if p.path=='/api/bind' and payload.get('remove'):self.require(c,True)
             if p.path in ('/api/model-test-file-rename','/api/model-test-file-delete'):

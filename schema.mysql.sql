@@ -1,4 +1,4 @@
--- AOI Industrial Asset Catalog | 31 tables
+-- AOI Industrial Asset Catalog | 34 tables
 
 -- Non-destructive DDL: existing tables are preserved.
 
@@ -97,6 +97,68 @@ CREATE TABLE IF NOT EXISTS `products` (
   CHECK (`diameter_mm` IS NULL OR `diameter_mm` >= 0),
   CHECK (`length_mm` IS NULL OR `length_mm` >= 0),
   UNIQUE (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `catalog_categories` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `source_system` VARCHAR(191) NOT NULL,
+  `source_category_id` VARCHAR(191) NOT NULL,
+  `name` VARCHAR(1024) NOT NULL,
+  `parent_id` BIGINT,
+  `category_path` MEDIUMTEXT,
+  `source_url` MEDIUMTEXT,
+  `created_by` VARCHAR(191),
+  `created_at` VARCHAR(191),
+  `updated_by` VARCHAR(191),
+  `updated_at` VARCHAR(191),
+  FOREIGN KEY (`parent_id`) REFERENCES `catalog_categories` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`parent_id` IS NULL OR `parent_id` >= 0),
+  UNIQUE (`source_system`, `source_category_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `catalog_products` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `source_system` VARCHAR(191) NOT NULL,
+  `source_product_id` VARCHAR(191) NOT NULL,
+  `bn` VARCHAR(191),
+  `record_scope` VARCHAR(191) NOT NULL,
+  `name` VARCHAR(1024) NOT NULL,
+  `head_type` VARCHAR(1024),
+  `drive_type` VARCHAR(1024),
+  `thread_type` VARCHAR(1024),
+  `material` VARCHAR(1024),
+  `material_type` VARCHAR(1024),
+  `manufacturing_material` VARCHAR(1024),
+  `property_class` VARCHAR(1024),
+  `surface_treatment` VARCHAR(1024),
+  `color` VARCHAR(1024),
+  `standards` VARCHAR(1024),
+  `category_path` MEDIUMTEXT,
+  `source_url` MEDIUMTEXT NOT NULL,
+  `fetched_at` VARCHAR(191),
+  `remark` VARCHAR(1024),
+  `raw_attributes_json` MEDIUMTEXT,
+  `created_by` VARCHAR(191),
+  `created_at` VARCHAR(191),
+  `updated_by` VARCHAR(191),
+  `updated_at` VARCHAR(191),
+  CHECK (`record_scope` IN ('series', 'article')),
+  UNIQUE (`source_system`, `source_product_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `catalog_product_categories` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `catalog_product_id` BIGINT NOT NULL,
+  `catalog_category_id` BIGINT NOT NULL,
+  `created_by` VARCHAR(191),
+  `created_at` VARCHAR(191),
+  `updated_by` VARCHAR(191),
+  `updated_at` VARCHAR(191),
+  FOREIGN KEY (`catalog_product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`catalog_product_id` IS NULL OR `catalog_product_id` >= 0),
+  FOREIGN KEY (`catalog_category_id`) REFERENCES `catalog_categories` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`catalog_category_id` IS NULL OR `catalog_category_id` >= 0),
+  UNIQUE (`catalog_product_id`, `catalog_category_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `assets` (

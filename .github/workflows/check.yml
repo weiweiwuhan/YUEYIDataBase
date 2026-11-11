@@ -24,6 +24,7 @@ jobs:
           node test_assistant_ui.js
           node test_image_search.js
           node test_offline_ui.js
+          node test_catalog_ui.js
       - name: Check frontend bundle
         run: |
           python build_frontend.py

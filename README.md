@@ -2,7 +2,7 @@
 
 > 以项目串联检测资料，让每一张图片有出处、每一个缺陷可追溯、每一次售后经验可复用。
 
-当前应用版本：**1.8.1**，版本及代码更新时间以 [version.json](version.json) 和网页左下角显示为准。
+当前应用版本：**1.9.0**，版本及代码更新时间以 [version.json](version.json) 和网页左下角显示为准。
 
 本项目将项目、产品、检测工程、图片、缺陷、技术协议和售后经验关联管理，支持公司内网共享、模型测试记录、本地模型离线分割，以及基于知识库的 AI 问答。
 
@@ -20,6 +20,7 @@
 | --- | --- |
 | 资料库总览 | 建设初衷与业务价值、知识积累路径，以及项目/工程/图片统计、工作提醒和最近资料 |
 | 数据录入与维护 | 项目、产品、分类、材质、工艺、缺陷、工程、协议、视频和售后经验 |
+| 紧固件目录 | 外部分类树、BN 系列与公开属性检索；管理员审核 Excel、预览差异后补充更新 |
 | 图片资料 | 上传命名、已有图片重命名、缩略图、原图预览、多工程关联、多缺陷批量绑定 |
 | 视频资料 | 项目视频与通用经验视频统一入主表，封面、播放、拖动及下载 |
 | 文档类型资料 | 通用或项目文档、可复用文档类别、Word/PPT/PDF 首页自动封面与旧文档补生成 |
@@ -33,6 +34,15 @@
 | 账号与维护 | 录入员/管理员、批量账号、作者记录、编辑冲突检查和操作审计 |
 
 “使用指南”已替换为“AI智能问答助手”；MySQL SQL 栏目不再显示在导航中，但 MySQL 运行支持保留，SQL 导出接口仅管理员可用。
+
+## 1.9 更新说明
+
+- 新增独立的“紧固件目录”，保存来源分类层级、一个系列的多个分类、BN 编号、头型、驱动槽型、螺纹、材质、材料类型、制造材料、性能等级、表面处理、颜色和标准。每条记录保留来源 URL、采集时间和原始属性；公开页未提供的值留空。
+- Bossard 的 BN 通常代表**产品系列**，不能直接当作某个尺寸的客户产品。外部目录与原有 `products`、`product_categories` 分开保存，不自动合并为公司产品或测试对象。
+- Excel 中所有新采集记录默认“待审核”。管理员将审核通过的记录改为“是”，在目录页先“预览校验”，再“确认更新目录”。重复来源编号匹配已有记录，只补空值和缺少的分类关联，保留已有冲突值，不执行删除。
+- 提供可选的公开页面采集脚本 `bossard_catalog.py`，网页正常运行和 Excel 导入无需安装浏览器采集依赖。脚本遵守 robots、限速并保留检查报告；访问限制、动态分页或缺失字段都不能作为已完整采集的证明。
+
+分类规则、Excel 审核方法、本地采集命令及边界见 [CATALOG_IMPORT.md](CATALOG_IMPORT.md)。仓库不内置全站采集数据；应审核实际交付工作簿的“采集报告”，当前样本也不代表完整实时目录。升级启动会创建三张独立目录表，**不会自动把待审核 Excel 写入业务库**。
 
 ## 1.8 更新说明
 
@@ -120,6 +130,7 @@ set "AOI_DATA=D:\YueyiData"
 | 新增、编辑、上传、重命名 | — | ✓ | ✓ |
 | 删除、解除工程关联 | — | — | ✓ |
 | 售后批量导入、问答知识导入及手动更新索引 | — | — | ✓ |
+| 紧固件目录写入、审核导入 | — | — | ✓ |
 | AI 问答及个人历史 | — | 仅本人 | 仅本人 |
 | 离线测试任务 | — | 本人任务 | 全部任务 |
 | 账号管理、操作审计、SQL 导出 | — | — | ✓ |
@@ -136,6 +147,12 @@ set "AOI_DATA=D:\YueyiData"
 请先准备输出目录。密码清单必须位于仓库之外，不能提交 Git。已有同名前缀账号会跳过并继续编号，不覆盖旧账号。每人使用独立账号，才能准确记录作者。
 
 ## 核心业务使用
+
+### 紧固件目录
+
+从侧栏或首页进入“紧固件目录”，按来源分类（包含下级）、BN、名称或属性检索。访客和录入员可浏览；管理员可在“导入已审核 Excel”中先预览新增、补充、跳过、冲突和错误，再确认更新。文件修改、预览过期或目录数据发生变化后需重新预览。
+
+审核时保留来源编号，不按产品名称去重。将“分类候选（待确认）”核实后填写到“分类编号”，多个分类用 `|` 分隔；候选列本身不会建立关联。材质、材料类型、制造材料分别保存，表面处理名称也不会自动转成颜色。完整流程见 [CATALOG_IMPORT.md](CATALOG_IMPORT.md)。
 
 ### 图片与缺陷
 
@@ -357,7 +374,7 @@ graph LR
 
 ## 数据位置、备份与升级
 
-当前有 **31 张业务表**；账号、会话、审计及问答内部存储不计入此数量。
+当前有 **34 张业务表**，其中三张用于外部紧固件目录；账号、会话、审计及问答内部存储不计入此数量。
 
 实际数据目录由 `AOI_DATA` 决定，未设置时为项目下的 `data`：
 
@@ -408,10 +425,11 @@ python -m unittest discover -p 'test_*.py' -q
 node test_assistant_ui.js
 node test_image_search.js
 node test_offline_ui.js
+node test_catalog_ui.js
 python export_contract.py --check
 ```
 
-本次 1.8.0 已通过 66 项 Python 测试、三组前端检查及 Chromium 桌面/手机宽度联调。实际转换测试覆盖多页 Word、PPT 和 PDF，确认只选首页；流式测试确认首段提前到达、会话隔离及中断处理。重现 Office 转换测试需安装 LibreOffice；相关测试依赖为 `requirements-dev.txt` 中的 python-docx 和 python-pptx。
+1.8.0 的验证覆盖多页 Word、PPT 和 PDF，确认只选首页；流式测试确认首段提前到达、会话隔离及中断处理。重现 Office 转换测试需安装 LibreOffice；相关测试依赖为 `requirements-dev.txt` 中的 python-docx 和 python-pptx。目录解析、Excel 校验和权限使用离线样例及临时数据库测试；这些检查不代表已完成 Bossard 实站全量采集。
 
 GitHub Actions 会运行回归、Office 首页转换、生成契约一致性和前端打包一致性检查。MySQL 生产升级、真实 DeepSeek 服务及 Docker 镜像部署仍需在对应环境验证。
 
@@ -430,9 +448,12 @@ GitHub Actions 会运行回归、Office 首页转换、生成契约一致性和�
 | `offline_queue.py` / `offline_runner.py` | 本地推理队列与模型适配器 |
 | `rag_assistant.py` / `assistant_service.py` | 检索生成、历史、知识源同步 |
 | `experience_import.py` | 售后和问答 CSV/XLSX 校验、查重 |
+| `catalog_import.py` / `CATALOG_IMPORT.md` | 外部紧固件目录审核、差异预览及幂等导入 / 使用说明 |
+| `bossard_catalog.py` / `requirements-catalog.txt` | 可选的 Bossard 公开目录采集与审核 Excel 生成 / 采集依赖 |
+| `static/catalog.js` / `static/catalog.css` | 紧固件目录浏览、属性检索和管理员审核导入界面 |
 | `version.json` | 当前应用版本、代码更新时间及变更摘要 |
 
-修改离线、问答或技术经验前端源码后，执行 `python build_frontend.py`。仅修改本文档不改变应用版本。
+修改离线、问答、技术经验或紧固件目录前端源码后，执行 `python build_frontend.py`。仅修改本文档不改变应用版本。
 
 核心回归：
 
@@ -441,8 +462,10 @@ python test_app.py
 node test_image_search.js
 node test_offline_ui.js
 node test_assistant_ui.js
+node test_catalog_ui.js
 python -m unittest -v test_offline test_offline_http test_checkpoint_conversion
 python -m unittest -v test_experience_import test_rag_assistant test_assistant_http test_knowledge_http test_feature_migrations test_catalog_storage
+python -m unittest -v test_catalog_import test_bossard_catalog
 ```
 
 可选并发压测：`python test_concurrency.py`。测试使用隔离数据；模型和 API 测试主要使用可控测试进程或模拟传输，不代表已经验证真实模型精度、GPU 速度或 DeepSeek 服务连接。

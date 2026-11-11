@@ -9,12 +9,18 @@ def col(name,label,kind='text',required=False,ref=None,choices=None):
         field['maxLength']=1024 if name in ('product_spec','prompt','requirements','symptom','cause','resolution','experience','remark','relative_path','member_path','root_path','thumbnail_path','local_path','evidence_locator') else 191
         if name in ('conditions','parameter_snapshot','acceptance_criteria','specification'):field['maxLength']=20000
         if name=='extracted_text':field['maxLength']=100000
+        if name=='source_url':field['maxLength']=2048
+        if name=='category_path':field['maxLength']=4000
+        if name=='raw_attributes_json':field['maxLength']=20000
     if name.endswith('_mm'):field['unit']='mm'
     if name in ('detection_rate','miss_rate','yield_rate'):field.update(maximum=100,unit='%')
     return field
 def table(name,label,group,description,fields,unique=None):
     for field in fields:
         if (name=='technical_experiences' and field['name'] in ('content','remark')) or (name=='model_tests' and field['name'] in ('test_method','expected_result','actual_result')) or (name=='after_sales' and field['name'] in ('symptom','cause','resolution','experience','remark')):field['maxLength']=20000
+    for field in fields:
+        if name in ('catalog_products','catalog_categories') and field['name']=='name':field['maxLength']=1024
+        if name=='catalog_products' and field['name'] in ('head_type','drive_type','thread_type','material','material_type','manufacturing_material','property_class','surface_treatment','color','standards'):field['maxLength']=1024
     return dict(name=name,label=label,group=group,description=description,fields=[col('id','编号','id')]+fields,unique=unique or [])
 T=[]
 def add(*a,**k): T.append(table(*a,**k))
@@ -25,6 +31,9 @@ add('process_types','工艺字典','配置','先建立选项，再在产品工�
 add('defect_types','缺陷字典','配置','统一缺陷名称；登记选项不代表图片已有该缺陷。',[col('name','缺陷名称',required=True),col('remark','备注')],unique=[['name']])
 add('projects','项目','主表','一个客户可有多个项目。',[col('code','项目编号',required=True),col('name','项目名称',required=True),col('customer_name','客户简称'),col('remark','备注')],unique=[['code']])
 add('products','产品','主表','每条记录代表一种产品规格；未知规格可先写原始描述。',[col('code','内部兼容键'),col('name','产品名称',required=True),col('category_id','产品分类','int',ref='product_categories'),col('material_id','材质','int',ref='materials'),col('spec_text','规格描述'),col('diameter_mm','直径 mm','real'),col('length_mm','长度 mm','real'),col('remark','备注')],unique=[['code']])
+add('catalog_categories','来源分类目录','配置','外部公开目录的原始分类层级；来源系统与来源分类编号共同识别，不按分类名称合并。',[col('source_system','来源系统',required=True),col('source_category_id','来源分类编号',required=True),col('name','分类名称',required=True),col('parent_id','上级目录分类','int',ref='catalog_categories'),col('category_path','来源分类路径'),col('source_url','来源URL')],unique=[['source_system','source_category_id']])
+add('catalog_products','标准紧固件目录','扩展','外部目录系列或目录规格，保留原文属性与来源；BN系列不代表某个具体尺寸产品，不自动用于测试对象。',[col('source_system','来源系统',required=True),col('source_product_id','来源产品编号',required=True),col('bn','BN编号'),col('record_scope','目录记录层级',required=True,choices=['series','article']),col('name','目录产品名称',required=True),col('head_type','头型'),col('drive_type','驱动槽型'),col('thread_type','螺纹'),col('material','材质'),col('material_type','材料类型'),col('manufacturing_material','制造材料'),col('property_class','性能等级'),col('surface_treatment','表面处理'),col('color','颜色'),col('standards','标准'),col('category_path','来源分类路径'),col('source_url','来源URL',required=True),col('fetched_at','公开信息采集时间'),col('remark','审核备注'),col('raw_attributes_json','原始公开属性JSON')],unique=[['source_system','source_product_id']])
+add('catalog_product_categories','目录产品—分类','关系','一个目录产品可以出现在多个来源分类中；不会改变公司现有的产品规格分类。',[col('catalog_product_id','目录产品','int',True,'catalog_products'),col('catalog_category_id','来源分类','int',True,'catalog_categories')],unique=[['catalog_product_id','catalog_category_id']])
 add('assets','文件资源','主表','每个文件或压缩包成员是一个资源。NAS 文件登记路径，本地上传文件另存 data/uploads。',[col('asset_type','资源类型',required=True,choices=['image','archive','engineering','annotation','document','other']),col('preview_asset_id','封面图片','int',ref='assets'),col('file_name','文件名',required=True),col('storage_location_id','存储位置','int',ref='storage_locations'),col('relative_path','相对路径'),col('storage_mode','存储形式',required=True,choices=['file','archive_member']),col('file_size','大小 bytes','int'),col('sha256','SHA-256'),col('status','状态',required=True,choices=['available','unverified','missing','pending','failed']),col('remark','备注')])
 add('images','图片','主表','通过 asset_id 一对一关联文件资源；未确认与 OK/NG 分开。',[col('asset_id','图片资源','int',True,'assets'),col('width','宽 px','int'),col('height','高 px','int'),col('channels','通道数','int'),col('quality_label','图片判定',required=True,choices=['unknown','OK','NG']),col('inspection_surface','检测面'),col('station_name','CCD 工位'),col('annotation_status','标注状态',required=True,choices=['unlabeled','labeled','reviewed']),col('thumbnail_path','缩略图路径')],unique=[['asset_id']])
 add('engineering_projects','检测工程','主表','每次工程版本单独登记，并保留旧文件。',[col('asset_id','工程资源','int',True,'assets'),col('local_path','本地工程路径'),col('name','工程名称',required=True),col('image_count','工程图片数量','int'),col('software_name','软件名称'),col('software_version','软件版本'),col('engineering_version','工程版本'),col('remark','备注')],unique=[['asset_id']])

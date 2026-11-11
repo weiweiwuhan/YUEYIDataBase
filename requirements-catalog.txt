@@ -1,0 +1,4 @@
+-r requirements.txt
+# Optional public-catalog collection; web application imports need only openpyxl.
+lxml>=5,<7
+playwright>=1.45,<2
