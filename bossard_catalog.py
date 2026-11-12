@@ -6,6 +6,8 @@ BN rows describe product series; individual dimensional articles are out of scop
 
 from __future__ import annotations
 import argparse, hashlib, json, os, re, shutil, sys, time, urllib.error, urllib.parse, urllib.request, urllib.robotparser
+import shlex
+import subprocess
 from collections import deque, Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +20,7 @@ from bossard_images import (
     MAX_IMAGE_BYTES,
 )
 
+TOOLKIT_VERSION = "2.0.1"
 SOURCE = "bossard_cn"
 ROOT_ID = "01.100"
 START_URL = "https://www.bossard.com.cn/cn-zh-cn/eshop/products/fastening-technology/standard-fastening-elements/c/01.100/"
@@ -105,6 +108,27 @@ CATEGORY_COLUMNS = [
 
 class CrawlBlocked(RuntimeError):
     pass
+
+
+def format_command(arguments):
+    """控制台命令按本机 shell 的引用习惯显示；执行仍使用参数列表。"""
+    if os.name == "nt":
+        return subprocess.list2cmdline(arguments)
+    return shlex.join(arguments)
+
+
+def print_install_help():
+    """使用本次解释器生成安装指令，避免装到另一套 Python 环境。"""
+    requirement = Path(__file__).with_name("collector_requirements.txt")
+    if not requirement.is_file():
+        requirement = Path(__file__).with_name("requirements-catalog.txt")
+    commands = (
+        [sys.executable, "-m", "pip", "install", "-r", str(requirement)],
+        [sys.executable, "-m", "playwright", "install", "chromium"],
+    )
+    print("请先在同一 Python 环境安装采集依赖和浏览器，再重试：", file=sys.stderr)
+    for command in commands:
+        print(format_command(command), file=sys.stderr, flush=True)
 
 
 def now():
@@ -616,6 +640,9 @@ class PublicCrawler:
         self.browser_block = None
         self.resumed = False
         self.cached_products = 0
+        self.runtime_error = None
+        self.runtime_phase = "not_started"
+        self.new_image_count = 0
 
     def throttle(self):
         """页面、sitemap 和图片共用同一串行限速时钟。"""
@@ -1171,6 +1198,7 @@ class PublicCrawler:
                 content = response.read(MAX_IMAGE_BYTES + 1)
             save_product_image(self.cache, row, content)
             row["image_fetched_at"] = now()
+            self.new_image_count += 1
         except (CrawlBlocked, urllib.error.HTTPError) as error:
             blocked = isinstance(error, CrawlBlocked) or error.code in (401, 403, 429)
             row.update(
@@ -1427,9 +1455,17 @@ class PublicCrawler:
                     invalid_cache_urls.add(url)
                     self.failure(url, error, "product_cache")
         save()
+        missing_images = sum(self.needs_image(row) for row in products.values())
+        print(
+            f"恢复缓存：{len(products)} 个产品；待补主图：{missing_images} 张。",
+            flush=True,
+        )
         try:
+            self.runtime_phase = "robots"
+            print("检查站点访问规则……", flush=True)
             self.check_robots(START_URL)
             if not self.images_only:
+                self.runtime_phase = "sitemap_discovery"
                 self.discover_sitemaps(seed_slugs, discovered, candidates, save)
             save()
             needs_browser = (
@@ -1444,6 +1480,8 @@ class PublicCrawler:
                 )
             )
             if needs_browser:
+                self.runtime_phase = "browser_import"
+                print("加载浏览器采集依赖……", flush=True)
                 from playwright.sync_api import sync_playwright
 
                 with sync_playwright() as p:
@@ -1468,9 +1506,12 @@ class PublicCrawler:
                     )
                     if proxy:
                         launch["proxy"] = {"server": proxy}
+                    self.runtime_phase = "browser_launch"
+                    print("启动采集浏览器……", flush=True)
                     browser = p.chromium.launch(**launch)
                     context = None
                     try:
+                        self.runtime_phase = "browser_context"
                         context = browser.new_context(
                             user_agent=USER_AGENT, locale="zh-CN"
                         )
@@ -1507,6 +1548,7 @@ class PublicCrawler:
                             and queue
                             and self.category_views < self.max_category_pages
                         ):
+                            self.runtime_phase = "category_collection"
                             url = queue.popleft()
                             queued.discard(url)
                             if url in self.completed_categories:
@@ -1540,6 +1582,7 @@ class PublicCrawler:
                             if not completed:
                                 break
                         active = None
+                        self.runtime_phase = "cached_image_collection"
                         for item in list(products.values()):
                             if self.needs_image(item):
                                 active = item["source_url"]
@@ -1547,6 +1590,7 @@ class PublicCrawler:
                                 self.collect_image(page, item)
                                 save()
                         active = None
+                        self.runtime_phase = "product_collection"
                         for url, ids in sorted(discovered.items()):
                             if self.images_only:
                                 break
@@ -1613,7 +1657,24 @@ class PublicCrawler:
             self.failure(active or START_URL, error, "access_blocked")
             print(str(error), file=sys.stderr)
         except Exception as error:
+            # 缓存能导出，不等于联网采集启动成功；启动异常必须返回失败。
+            self.runtime_error = f"{type(error).__name__}: {error}"[:4000]
             self.failure(active or START_URL, error, "crawler")
+            print(
+                f"采集失败 [{self.runtime_phase}]：{self.runtime_error}\n"
+                "已保留已有缓存，将导出报告供排查，本轮采集未正常完成。",
+                file=sys.stderr,
+                flush=True,
+            )
+            if isinstance(error, ImportError) and (
+                getattr(error, "name", "") or ""
+            ).startswith("playwright"):
+                print_install_help()
+            elif (
+                self.runtime_phase == "browser_launch"
+                and "Executable doesn't exist" in str(error)
+            ):
+                print_install_help()
         finally:
             save()
         # A seed is normally complete; exclude any orphan chain found in malformed public markup.
@@ -1657,6 +1718,8 @@ class PublicCrawler:
         ]
         if self.access_blocked:
             status = "访问受限或站点禁止"
+        elif self.runtime_error:
+            status = "失败（采集启动或执行异常；已保留缓存）"
         elif not discovered_bn:
             status = "失败（未发现任何BN产品系列）"
         elif not products:
@@ -1673,6 +1736,7 @@ class PublicCrawler:
         else:
             status = "已处理本次已发现BN公开页面；目录完整性仍需审核"
         report = {
+            "toolkit_version": TOOLKIT_VERSION,
             "status": status,
             "complete_catalog": False,
             "start_url": START_URL,
@@ -1690,6 +1754,8 @@ class PublicCrawler:
             "remaining_category_urls": remaining_categories,
             "pagination_unverified": self.pagination_pending,
             "failed_or_unverified": self.failures,
+            "runtime_error": self.runtime_error,
+            "runtime_phase": self.runtime_phase,
             "sitemap_requests_this_run": self.sitemap_requests,
             "sitemap_page_limit": self.max_sitemap_pages,
             "sitemap_results": self.sitemap_results,
@@ -1701,6 +1767,7 @@ class PublicCrawler:
             "download_images": self.download_images,
             "images_only": self.images_only,
             "downloaded_image_count": len(products) - len(pending_images),
+            "new_image_count": self.new_image_count,
             "image_status_counts": dict(
                 Counter(p.get("image_status", "pending") for p in products.values())
             ),
@@ -1844,6 +1911,16 @@ def main():
         embed_images=not args.no_embed_images,
     )
     print(json.dumps(result, ensure_ascii=False))
+    if args.crawl:
+        print("采集状态：" + report.get("status", "未知"), flush=True)
+        print(
+            f"图片：本次新下载 {report.get('new_image_count', 0)} 张，"
+            f"本地已有 {report.get('downloaded_image_count', 0)} 张，"
+            f"仍待补采 {len(report.get('pending_image_ids', []))} 张；"
+            f"本份 Excel 嵌图 {result['embedded_images']} 张。",
+            flush=True,
+        )
+        print("详细报告：" + str(args.cache / "crawl-report.json"), flush=True)
     if args.crawl and report.get("status", "").startswith("访问受限"):
         return 2
     if args.crawl and report.get("status", "").startswith("失败"):

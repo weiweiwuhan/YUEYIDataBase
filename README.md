@@ -468,7 +468,7 @@ node test_assistant_ui.js
 node test_catalog_ui.js
 python -m unittest -v test_offline test_offline_http test_checkpoint_conversion
 python -m unittest -v test_experience_import test_rag_assistant test_assistant_http test_knowledge_http test_feature_migrations test_catalog_storage
-python -m unittest -v test_catalog_import test_bossard_catalog test_bossard_images
+python -m unittest -v test_catalog_import test_bossard_catalog test_bossard_images test_bossard_runtime
 ```
 
 可选并发压测：`python test_concurrency.py`。测试使用隔离数据；模型和 API 测试主要使用可控测试进程或模拟传输，不代表已经验证真实模型精度、GPU 速度或 DeepSeek 服务连接。

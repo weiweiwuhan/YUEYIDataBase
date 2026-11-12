@@ -10,11 +10,11 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import shlex
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from bossard_catalog import TOOLKIT_VERSION, format_command
 
 DEFAULT_CONFIG = {
     "categories": "categories.json",
@@ -157,8 +157,9 @@ def main() -> int:
         ):
             raise ValueError("只补图需要已有缓存，请先采集或沿用工具包的 cache 目录")
         output_dir.mkdir(parents=True, exist_ok=True)
+        print(f"Bossard 本地采集工具 {TOOLKIT_VERSION}；模式：{args.mode}", flush=True)
         print("本次输出：" + str(output), flush=True)
-        print("执行参数：" + shlex.join(command), flush=True)
+        print("执行参数：" + format_command(command), flush=True)
         return subprocess.run(command, cwd=base, check=False).returncode
     except (OSError, ValueError) as error:
         print("配置或运行失败：" + str(error), file=sys.stderr)

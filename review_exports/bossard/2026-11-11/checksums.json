@@ -1,18 +1,22 @@
 {
   "Bossard_review_391_BN.xlsx": {
-    "bytes": 115612,
-    "sha256": "073eadac9d8e519c08a3d193bcd9c2ca54b44e6b781600414cdfb12030de31fb"
+    "bytes": 115633,
+    "sha256": "ae12cc52abdda3f2dba2095ff958f904f92a96264d7c6b636a7041fdde3e2089"
   },
   "Bossard_collector_with_product_images.zip": {
-    "bytes": 1095350,
-    "sha256": "333ad1671622491daafdc88ef59461c12305b2a66d68fc7c4e08ae716b28b67b"
+    "bytes": 1097523,
+    "sha256": "732835e8ef251278137bb4da947000ae7132863a3ecac286a87a26f3c236efa6"
   },
   "Bossard_review_and_resume_tools.zip": {
-    "bytes": 1095350,
-    "sha256": "333ad1671622491daafdc88ef59461c12305b2a66d68fc7c4e08ae716b28b67b"
+    "bytes": 1097523,
+    "sha256": "732835e8ef251278137bb4da947000ae7132863a3ecac286a87a26f3c236efa6"
   },
   "pending_317_BN.csv": {
     "bytes": 49944,
     "sha256": "8f75c141c442554ca6a7c309f0fa64cf37889d9ef2ee8fae64c00ced10b5f39b"
+  },
+  "Bossard_collector_fix_2.0.1.zip": {
+    "bytes": 48313,
+    "sha256": "29b796f6e9ff16d3658a02c1058c06f486037c44d19ba378d4b22d4e7c6b3793"
   }
 }

@@ -1,6 +1,6 @@
 # Bossard 采集工具接口定义
 
-适用版本：独立采集工具2.0（2026-11-12）。这些是**本地命令行和 Python 函数接口**，不是新增的网页 HTTP 接口；无需启动 Web 服务。安装与原理见 [使用教程](BOSSARD_COLLECTOR_GUIDE.md)。
+适用版本：独立采集工具2.0.1（2026-11-12）。这些是**本地命令行和 Python 函数接口**，不是新增的网页 HTTP 接口；无需启动 Web 服务。安装与原理见 [使用教程](BOSSARD_COLLECTOR_GUIDE.md)。
 
 ## 1. 配置入口
 
@@ -50,7 +50,7 @@ python bossard_catalog.py --categories JSON文件 --output XLSX文件 [其他参
 
 直接 CLI 的相对路径以当前工作目录为准。配置入口会先转换为绝对路径，因此两者使用相对路径的基准不同。
 
-退出码：`0` 程序正常返回，可能仍是部分采集；`1` 采集失败；`2` 访问受限或 argparse 参数错误。运行配置入口自身配置/文件错误返回1。Ctrl+C 是用户中断，不保证当时已经导出最终表，已逐条保存的缓存可续采。
+退出码：`0` 程序正常返回，可能仍是部分采集；控制台分别显示新下载、已有与待补采图片数；`1` 采集启动或执行失败（即使成功导出了已有缓存也返回1）；`2` 访问受限或 argparse 参数错误。运行配置入口自身配置/文件错误返回1。Ctrl+C 是用户中断，不保证当时已经导出最终表，已逐条保存的缓存可续采。
 
 ## 3. 采集与导出 Python 接口
 
@@ -186,6 +186,8 @@ python bossard_catalog.py --categories JSON文件 --output XLSX文件 [其他参
 | `exported_product_series` | 本轮成功恢复/解析并返回的产品数 |
 | `pending_product_ids` | 已发现但尚未成功解析的BN |
 | `download_images` / `images_only` | 本次运行的图片选项 |
+| `runtime_error` / `runtime_phase` | 启动/执行异常与发生阶段，例如 `browser_import`、`browser_launch`；异常时报告状态为失败并返回1 |
+| `new_image_count` | 本轮实际成功下载的图片次数，不包括包内示例和历史缓存 |
 | `downloaded_image_count` | 对已返回产品检查，本地PNG实际存在的数量 |
 | `image_status_counts` | 产品记录中的图片状态分布；历史 downloaded 但文件丢失时可能与实际数不同 |
 | `pending_image_ids` | 已返回产品中本地PNG缺失的BN，不包含还没成功取得属性的产品 |
