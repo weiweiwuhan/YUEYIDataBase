@@ -157,6 +157,12 @@ def validate(c,t,r,exclude=None):
             asset=execute(c,'SELECT asset_type,file_name FROM assets WHERE id=?',(out['asset_id'],)).fetchone()
             if not asset or (asset['asset_type']!='document' and Path(asset['file_name']).suffix.lower() not in ('.mp4','.webm','.mov','.avi','.mkv','.m4v')):raise ValueError('请选择文档或视频文件')
     return out
+def mark_product_evidence(c,product_ids):
+    checks=getattr(ACTOR,'knowledge_checks',set())
+    for product_id in set(product_ids):
+        for test in execute(c,'SELECT id FROM model_tests WHERE product_id=?',(product_id,)).fetchall():
+            checks.add(('model_tests',test['id']))
+    ACTOR.knowledge_checks=checks
 def save(c,t,r,rid=None):
     r=dict(r)
     existing=execute(c,f'SELECT * FROM `{t}` WHERE id=?',(rid or r.get('id'),)).fetchone() if rid or r.get('id') else None
@@ -174,6 +180,10 @@ def save(c,t,r,rid=None):
         if t=='assets' and 'preview_asset_id' not in r:r['preview_asset_id']=existing['preview_asset_id']
         if t=='model_tests' and not getattr(ACTOR,'recapture_snapshot',False) and existing['parameter_snapshot']:r['parameter_snapshot']=existing['parameter_snapshot']
     r=validate(c,t,r,rid)
+    if existing and t=='products' and existing['material_id']!=r.get('material_id'):
+        mark_product_evidence(c,[existing['id']])
+    if existing and t=='product_processes' and any(existing[field]!=r.get(field) for field in ('product_id','process_id')):
+        mark_product_evidence(c,[existing['product_id'],r['product_id']])
     if t=='technical_experience_files':ACTOR.promote_media=True
     if t in ('assets','videos','technical_agreements','agreement_files'):ACTOR.storage_dirty=True
     if t=='technical_agreements' and r.get('document_type') and not execute(c,'SELECT id FROM document_types WHERE name=?',(r['document_type'],)).fetchone():save(c,'document_types',{'name':r['document_type']})
@@ -541,7 +551,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 if cookie:self.send_header('Set-Cookie',cookie)
                 self.send_header('Cache-Control','no-store');self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
-            self.require(c,p.path in ('/api/delete','/api/import','/api/seed','/api/model-test-delete','/api/model-test-file-delete'))
+            self.require(c,p.path in ('/api/delete','/api/import','/api/seed','/api/model-test-delete','/api/model-test-file-delete','/api/knowledge/unlink-binding'))
             if p.path=='/api/upload':
                 q=parse_qs(p.query);name=safe_filename(q.get('name',['upload.bin'])[0])
                 if q.get('kind')==['agreement_new'] and n>256*1024*1024:raise ValueError('文档附件单文件最多 256 MB')
@@ -730,6 +740,11 @@ class Handler(BaseHTTPRequestHandler):
                     if old:execute(c,'DELETE FROM asset_relations WHERE id=?',(old['id'],))
                 elif not old:save(c,'asset_relations',dict(source_asset_id=en['asset_id'],target_asset_id=image['asset_id'],relation_type='paired'))
                 result=dict(ok=True)
+            elif p.path=='/api/knowledge/unlink-binding':
+                from dictionary_maintenance import unlink_binding
+                result=unlink_binding(c,execute,save,payload,ConflictError)
+                # A corrected product scope must not silently invalidate verified experience.
+                mark_product_evidence(c,[result['product_id']])
             elif p.path=='/api/knowledge/save':
                 t=payload['table']
                 if t not in ('technical_experiences','model_tests'):raise ValueError('不支持的知识录入类型')
@@ -761,6 +776,16 @@ class Handler(BaseHTTPRequestHandler):
             elif p.path=='/api/delete':
                 t=payload['table']
                 if t not in TABLES:raise ValueError('未知表')
+                if 'expected_updated_at' in payload:
+                    current=execute(c,f'SELECT updated_at FROM `{t}` WHERE id=?',(int(payload['id']),)).fetchone()
+                    if not current or current['updated_at']!=payload['expected_updated_at']:raise ConflictError('记录已被修改或删除，请刷新详情后再操作')
+                if t in ('materials','process_types'):
+                    from dictionary_maintenance import deletion_message
+                    blocked=deletion_message(c,execute,t,int(payload['id']))
+                    if blocked:raise ValueError(blocked)
+                if t=='product_processes':
+                    relation=execute(c,'SELECT product_id FROM product_processes WHERE id=?',(int(payload['id']),)).fetchone()
+                    if relation:mark_product_evidence(c,[relation['product_id']])
                 if t=='knowledge_links':
                     link=execute(c,'SELECT source_table,source_id FROM knowledge_links WHERE id=?',(int(payload['id']),)).fetchone()
                     if link and link['source_table'] in ('technical_experiences','model_tests'):ACTOR.knowledge_checks.add((link['source_table'],link['source_id']))

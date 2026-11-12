@@ -45,13 +45,94 @@ async function saveKnowledgeForm(form,t,id){
  return request('/api/knowledge/save',{table:t,id,expected_updated_at:old?.updated_at??null,record,links:selectedKnowledgeLinks(form,t,id),recapture_snapshot:!!form.elements.recapture_snapshot?.checked});
 }
 function wireKnowledgeViews(root){root.querySelectorAll('[data-knowledge-view]').forEach(b=>b.onclick=()=>knowledgeDetails(b.dataset.knowledgeTable,Number(b.dataset.knowledgeView)))}
-async function knowledgeDetails(t,id){
- const d=extraDialog('<div class="dialogtop"><h2>对象详情与关联资料</h2><button data-close>✕</button></div><div data-knowledge-body>正在读取关联…</div>','knowledge-dialog');
- try{const data=await request('/api/knowledge/graph?'+new URLSearchParams({table:t,id,depth:1}));const nodes=new Map(data.nodes.map(n=>[n.key,n])),root=nodes.get(data.root),meta=S.schema.find(s=>s.name===t),r=root.record;
- d.querySelector('[data-knowledge-body]').innerHTML=`<h2>${esc(root.label)}</h2><p class="subtle">${esc(meta?.label)} #${id} · 作者 ${esc(r.created_by||'历史记录未登记')}</p><details open><summary>基本信息</summary><dl class="record-details">${(meta?.fields||[]).filter(f=>!f.hidden&&r[f.name]!=null).map(f=>`<dt>${esc(f.label)}</dt><dd>${esc(f.ref?label(f.ref,r[f.name]):r[f.name])}</dd>`).join('')}</dl></details>${recordMedia(t,r)}<h3>别名</h3><p>${esc(root.aliases.join('、')||'尚未登记')}</p>${S.auth?'<button data-alias-new>添加经确认的别名</button>':''}<h3>双向关联与依据</h3>${data.edges.map(e=>{const other=nodes.get(e.source===data.root?e.target:e.source);return `<article class="link-detail"><strong>${esc(nodes.get(e.source).label)} → ${esc(e.relation)} → ${esc(nodes.get(e.target).label)}</strong><p>${esc(e.confirmation_status||'已有明确绑定')} ${e.conditions?' · 条件：'+esc(e.conditions):''}${e.evidence_test_id?' · 测试依据 #'+e.evidence_test_id:''}${e.evidence_document_id?' · 依据文档 #'+e.evidence_document_id:''}${e.evidence_locator?' · '+esc(e.evidence_locator):''}</p><button data-knowledge-table="${other.table}" data-knowledge-view="${other.id}">查看${esc(other.label)}</button>${e.evidence_test_id?`<button data-knowledge-table="model_tests" data-knowledge-view="${e.evidence_test_id}">查看测试依据</button>`:''}${e.evidence_document_id?`<button data-knowledge-table="technical_agreements" data-knowledge-view="${e.evidence_document_id}">查看依据文档</button>`:''}${e.link_id&&S.auth?.role==='admin'?`<button data-knowledge-unlink="${e.link_id}">解除关联</button>`:''}</article>`}).join('')||'<p>尚未登记相关资料</p>'}<details><summary>关系图</summary>${knowledgeSvg(data)}</details>`;wireKnowledgeViews(d);wireResourceActions(d);
- d.querySelector('[data-alias-new]')?.addEventListener('click',()=>aliasEditor(t,id));
- d.querySelectorAll('[data-knowledge-unlink]').forEach(b=>b.onclick=async()=>{if(!confirm('解除这条关联？'))return;try{await request('/api/delete',{table:'knowledge_links',id:Number(b.dataset.knowledgeUnlink)});d.close();await refresh();knowledgeDetails(t,id)}catch(e){toast(e.message)}});
- }catch(e){d.querySelector('[data-knowledge-body]').textContent=e.message}
+const dictionaryTables=new Set(['materials','process_types']);
+
+async function editKnowledgeRecord(t,id,dialog){
+ if(!S.auth){toast('请先登录后编辑');return}
+ try{
+  S=await request('/api/state');
+  dialog?.close();
+  table=t;go('records');edit(id);
+ }catch(error){toast(error.message)}
+}
+
+async function deleteDictionary(t,id,dialog=null){
+ if(S.auth?.role!=='admin'){toast('仅管理员可以删除字典条目');return}
+ const row=S.data[t]?.find(r=>r.id===id),name=t==='materials'?'材质':'工艺';
+ if(!row||!confirm(`删除${name}“${row.name}”？有关联时会保留该条目并提示处理。`))return;
+ try{
+  await request('/api/delete',{table:t,id,expected_updated_at:row.updated_at??null});
+  dialog?.close();await refresh();toast(`${name}条目已删除`);
+ }catch(error){
+  if(dialog){dialog.querySelector('[data-maintenance-error]').textContent=error.message}
+  else await knowledgeDetails(t,id,error.message);
+ }
+}
+
+async function knowledgeDetails(t,id,initialNotice=''){
+ const dictionary=dictionaryTables.has(t),title=dictionary?'字典详情与关联管理':'对象详情与关联资料';
+ const d=extraDialog(`<div class="dialogtop"><h2>${title}</h2><button data-close>✕</button></div><div data-knowledge-body>正在读取关联…</div>`,'knowledge-dialog');
+ let notice=initialNotice;
+ const draw=async()=>{
+  const data=await request('/api/knowledge/graph?'+new URLSearchParams({table:t,id,depth:1}));
+  const nodes=new Map(data.nodes.map(n=>[n.key,n])),root=nodes.get(data.root),meta=S.schema.find(s=>s.name===t),r=root.record;
+  const admin=S.auth?.role==='admin';
+  const references=data.edges.filter(e=>e.target===data.root&&(e.binding||e.link_id)).length;
+  const name=t==='materials'?'材质':'工艺';
+  d.querySelector('[data-knowledge-body]').innerHTML=`
+   <h2>${esc(root.label)}</h2><p class="subtle">${esc(meta?.label)} #${id} · 作者 ${esc(r.created_by||'历史记录未登记')}</p>
+   <div class="toolbar"><button data-detail-refresh>刷新关联</button>${S.auth?'<button data-record-edit>编辑此记录</button>':''}${dictionary&&admin?`<button class="danger" data-dictionary-delete ${references?'disabled':''} ${references?'title="请先处理下方的引用"':''}>删除当前${name}${references?'（先处理引用）':''}</button>`:''}</div>
+   <p class="error" role="alert" data-maintenance-error>${esc(notice)}</p>
+   ${dictionary?`<div class="note"><p>仅名称录错时，可直接编辑此记录，已有产品关联会保留。</p><p>关联选错时，可在下方${t==='materials'?'更正产品材质':'更正工艺绑定'}，或由管理员逐条解除错误绑定。解除材质后该产品材质留空；解除工艺只移除这一条产品—工艺关系。</p><p>当前还有 ${references} 处引用需要处理。产品、图片和工程资料会保留。</p></div>`:''}
+   <details ${dictionary?'':'open'}><summary>基本信息</summary><dl class="record-details">${(meta?.fields||[]).filter(f=>!f.hidden&&r[f.name]!=null).map(f=>`<dt>${esc(f.label)}</dt><dd>${esc(f.ref?label(f.ref,r[f.name]):r[f.name])}</dd>`).join('')}</dl></details>
+   ${recordMedia(t,r)}<h3>别名</h3><p>${esc(root.aliases.join('、')||'尚未登记')}</p>${S.auth?'<button data-alias-new>添加经确认的别名</button>':''}
+   <h3>双向关联与依据</h3>${data.edges.map((e,index)=>{
+    const other=nodes.get(e.source===data.root?e.target:e.source);
+    if(!other)return '';
+    return `<article class="link-detail"><strong>${esc(nodes.get(e.source).label)} → ${esc(e.relation)} → ${esc(nodes.get(e.target).label)}</strong>
+     <p>${esc(e.confirmation_status||'已有明确绑定')} ${e.conditions?' · 条件：'+esc(e.conditions):''}${e.evidence_test_id?' · 测试依据 #'+e.evidence_test_id:''}${e.evidence_document_id?' · 依据文档 #'+e.evidence_document_id:''}${e.evidence_locator?' · '+esc(e.evidence_locator):''}</p>
+     <div class="toolbar"><button data-knowledge-table="${other.table}" data-knowledge-view="${other.id}">查看${esc(other.label)}</button>
+     ${S.auth&&['products','materials','process_types','technical_experiences','model_tests'].includes(other.table)?`<button data-related-edit="${index}">${e.binding?.kind==='product_material'?'更正产品材质':e.binding?.kind==='product_process'?'更正工艺绑定':other.table==='products'?'编辑产品':'编辑关联记录'}</button>`:''}
+     ${e.evidence_test_id?`<button data-knowledge-table="model_tests" data-knowledge-view="${e.evidence_test_id}">查看测试依据</button>`:''}
+     ${e.evidence_document_id?`<button data-knowledge-table="technical_agreements" data-knowledge-view="${e.evidence_document_id}">查看依据文档</button>`:''}
+     ${e.binding&&admin?`<button data-binding-unlink="${index}">解除${e.binding.kind==='product_material'?'材质':'工艺'}绑定</button>`:''}
+     ${e.link_id&&admin?`<button data-knowledge-unlink="${index}">解除知识关联</button>`:''}</div></article>`;
+   }).join('')||'<p>尚未登记相关资料</p>'}
+   <details><summary>关系图</summary>${knowledgeSvg(data)}</details>`;
+  wireKnowledgeViews(d);wireResourceActions(d);
+  d.querySelector('[data-detail-refresh]').onclick=async event=>{
+   event.target.disabled=true;
+   try{await refresh();notice='';await draw()}
+   catch(error){d.querySelector('[data-maintenance-error]').textContent=error.message;event.target.disabled=false}
+  };
+  d.querySelector('[data-record-edit]')?.addEventListener('click',()=>editKnowledgeRecord(t,id,d));
+  d.querySelector('[data-dictionary-delete]')?.addEventListener('click',()=>deleteDictionary(t,id,d));
+  d.querySelector('[data-alias-new]')?.addEventListener('click',()=>aliasEditor(t,id));
+  d.querySelectorAll('[data-related-edit]').forEach(button=>button.onclick=()=>{
+   const edge=data.edges[Number(button.dataset.relatedEdit)],other=nodes.get(edge.source===data.root?edge.target:edge.source);
+   if(edge.binding?.kind==='product_material')editKnowledgeRecord('products',edge.binding.id,d);
+   else if(edge.binding?.kind==='product_process')editKnowledgeRecord('product_processes',edge.binding.id,d);
+   else editKnowledgeRecord(other.table,other.id,d);
+  });
+  const remove=async(button,operation,message)=>{
+   button.disabled=true;
+   d.querySelector('[data-maintenance-error]').textContent='';
+   try{await operation();notice='';await refresh();await draw();toast(message)}
+   catch(error){d.querySelector('[data-maintenance-error]').textContent=error.message;button.disabled=false}
+  };
+  d.querySelectorAll('[data-binding-unlink]').forEach(button=>button.onclick=()=>{
+   const edge=data.edges[Number(button.dataset.bindingUnlink)],binding=edge.binding;
+   const product=nodes.get(edge.source),target=nodes.get(edge.target),material=binding.kind==='product_material';
+   if(!confirm(`解除产品“${product.label}”与“${target.label}”的${material?'材质':'工艺'}绑定？${material?'该产品材质将留空。':'该产品的其他工艺会保留。'}产品及关联资料会保留。`))return;
+   return remove(button,()=>request('/api/knowledge/unlink-binding',{kind:binding.kind,id:binding.id,target_id:binding.target_id,expected_updated_at:binding.updated_at??null}),'错误绑定已解除，产品与资料已保留');
+  });
+  d.querySelectorAll('[data-knowledge-unlink]').forEach(button=>button.onclick=()=>{
+   const edge=data.edges[Number(button.dataset.knowledgeUnlink)];
+   if(!confirm('解除这条知识关联？相关产品、经验和资料记录会保留。'))return;
+   return remove(button,()=>request('/api/delete',{table:'knowledge_links',id:edge.link_id,expected_updated_at:edge.updated_at??null}),'知识关联已解除');
+  });
+ };
+ try{await draw()}catch(error){d.querySelector('[data-knowledge-body]').textContent=error.message}
 }
 function aliasEditor(t,id){const d=extraDialog('<form><h2>添加对象别名</h2><p>确认是同一个对象后再添加；相似名称不会自动合并。</p><label>别名<input name="name" required maxlength="191"></label><p class="error"></p><button type="button" data-close>取消</button><button class="primary">保存别名</button></form>');d.querySelector('form').onsubmit=async e=>{e.preventDefault();try{await request('/api/save',{table:'entity_aliases',record:{entity_table:t,entity_id:id,name:e.target.elements.name.value}});S=await request('/api/state');d.close();toast('别名已登记，关联选择和智能问答均可检索')}catch(e){d.querySelector('.error').textContent=e.message}}}
 function knowledgeSvg(data){
@@ -64,5 +145,9 @@ async function knowledgePage(){
  const draw=()=>{const q=knowledgeNormalize($('#knowledge-filter').value);$('#knowledge-list').innerHTML=knowledgeEntityTables.filter(t=>t!=='assets').flatMap(t=>(S.data[t]||[]).filter(r=>knowledgeNormalize(objectName(t,r)).includes(q)).map(r=>`<article class="panel"><span class="pill">${esc(S.schema.find(s=>s.name===t)?.label)}</span><h3>${esc(r.name||r.file_name||label(t,r.id))}</h3><p>${esc(objectName(t,r))}</p><button data-knowledge-table="${t}" data-knowledge-view="${r.id}">查看详情与关联</button></article>`)).slice(0,150).join('')||'<p>没有匹配对象</p>';wireKnowledgeViews($('#knowledge-list'))};$('#knowledge-filter').oninput=draw;draw();
 }
 const schemaGraph=graph;graph=knowledgePage;
-const rowsWithKnowledge=drawRows;drawRows=function(){rowsWithKnowledge();if(knowledgeEntityTables.includes(table))$('#rows').querySelectorAll('[data-edit]').forEach(b=>{const button=document.createElement('button');button.textContent='详情与关联';button.onclick=()=>knowledgeDetails(table,Number(b.dataset.edit));b.after(button)})};
+const rowsWithKnowledge=drawRows;drawRows=function(){
+ rowsWithKnowledge();const currentTable=table;
+ if(knowledgeEntityTables.includes(currentTable))$('#rows').querySelectorAll('[data-edit]').forEach(b=>{const button=document.createElement('button');button.textContent='详情与关联';button.onclick=()=>knowledgeDetails(currentTable,Number(b.dataset.edit));b.after(button)});
+ if(dictionaryTables.has(currentTable))$('#rows').querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>deleteDictionary(currentTable,Number(b.dataset.delete)));
+};
 const modeltestsWithKnowledge=modeltests;modeltests=function(){modeltestsWithKnowledge();$('#model-test-list').querySelectorAll('[data-model-edit]').forEach(b=>{const button=document.createElement('button');button.textContent='详情与关联';button.onclick=()=>knowledgeDetails('model_tests',Number(b.dataset.modelEdit));b.before(button)})};

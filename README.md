@@ -2,7 +2,7 @@
 
 > 以项目串联检测资料，让每一张图片有出处、每一个缺陷可追溯、每一次售后经验可复用。
 
-当前应用版本：**1.9.0**，版本及代码更新时间以 [version.json](version.json) 和网页左下角显示为准。
+当前应用版本：**1.9.1**，版本及代码更新时间以 [version.json](version.json) 和网页左下角显示为准。
 
 本项目将项目、产品、检测工程、图片、缺陷、技术协议和售后经验关联管理，支持公司内网共享、模型测试记录、本地模型离线分割，以及基于知识库的 AI 问答。
 
@@ -34,6 +34,15 @@
 | 账号与维护 | 录入员/管理员、批量账号、作者记录、编辑冲突检查和操作审计 |
 
 “使用指南”已替换为“AI智能问答助手”；MySQL SQL 栏目不再显示在导航中，但 MySQL 运行支持保留，SQL 导出接口仅管理员可用。
+
+## 1.9.1：更正材质、工艺与删除字典
+
+- 在“数据录入”选择材质字典或工艺字典，点击“详情与关联”，可直接编辑该条目、更正产品材质或工艺绑定，管理员还能逐条解除错误的材质/工艺绑定。关联未处理完时会显示剩余引用数量；处理完后可在同一窗口删除字典条目。
+- 仅名称录错时，直接编辑字典名称即可，已有产品关联继续保留。产品选错材质或工艺时，优先用“更正产品材质”或“更正工艺绑定”选择正确条目；确实不需要时再解除，产品材质变为空。解除工艺只移除当前产品的这一条工艺关系，不删除产品或其他工艺。
+- 删除受引用保护时，页面会列出产品与知识关联数量，并打开可操作的关联详情。删除与解除绑定仍限管理员；访客只读，录入员可编辑记录。
+- 解除绑定会校验当前关联和更新时间，其他人已经修改的绑定不能按旧页面清除。涉及已验证经验的测试依据时会重新校验范围；不匹配则回滚，需先核实相关经验的适用范围。产品、图片、工程、测试记录和原文件不会随字典清理而删除。
+
+更新代码后重启服务并刷新页面，左下角应显示1.9.1。数据库表结构保持兼容，无需手动修改数据文件。
 
 ## 1.9 更新说明
 
@@ -440,6 +449,7 @@ GitHub Actions 会运行回归、Office 首页转换、生成契约一致性和�
 | `schema.py` / `schema.mysql.sql` / `schemas/catalog.schema.json` | 统一字段规则、单位 / 生成的 MySQL DDL 与 JSON Schema |
 | `export_contract.py` | 从字段注册表生成契约，支持 `--check` 检查漂移 |
 | `knowledge_contract.py` / `knowledge_graph.py` | 统一术语与关系范围、对象歧义处理、证据检查和条件筛选 |
+| `dictionary_maintenance.py` | 材质/工艺引用检查、管理员逐条解除产品绑定与并发校验 |
 | `media_preview.py` / `backfill_previews.py` | 文档首页与视频首帧封面 / 已有文档封面补生成 |
 | `verify_knowledge.py` | 只读检查旧知识引用、已验证依据及同名对象 |
 | `app.py` / `auth.py` | HTTP、业务、上传及账号权限 |
@@ -468,7 +478,7 @@ node test_assistant_ui.js
 node test_catalog_ui.js
 python -m unittest -v test_offline test_offline_http test_checkpoint_conversion
 python -m unittest -v test_experience_import test_rag_assistant test_assistant_http test_knowledge_http test_feature_migrations test_catalog_storage
-python -m unittest -v test_catalog_import test_bossard_catalog test_bossard_images test_bossard_runtime
+python -m unittest -v test_catalog_import test_bossard_catalog test_bossard_images test_bossard_runtime test_dictionary_http
 ```
 
 可选并发压测：`python test_concurrency.py`。测试使用隔离数据；模型和 API 测试主要使用可控测试进程或模拟传输，不代表已经验证真实模型精度、GPU 速度或 DeepSeek 服务连接。
