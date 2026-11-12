@@ -41,8 +41,9 @@
 - Bossard 的 BN 通常代表**产品系列**，不能直接当作某个尺寸的客户产品。外部目录与原有 `products`、`product_categories` 分开保存，不自动合并为公司产品或测试对象。
 - Excel 中所有新采集记录默认“待审核”。管理员将审核通过的记录改为“是”，在目录页先“预览校验”，再“确认更新目录”。重复来源编号匹配已有记录，只补空值和缺少的分类关联，保留已有冲突值，不执行删除。
 - 提供可选的公开页面采集脚本 `bossard_catalog.py`，网页正常运行和 Excel 导入无需安装浏览器采集依赖。脚本遵守 robots、限速并保留检查报告；访问限制、动态分页或缺失字段都不能作为已完整采集的证明。
+- 本地采集工具包支持下载详情页主产品照片，保存原始文件与 PNG，在审核 Excel 中增加“产品图片”、本地路径、来源和状态。支持仅给已有产品补图、断点续采与离线重新导出，附 Windows 运行入口、JSON 配置、代码注释及[配置与原理教程](BOSSARD_COLLECTOR_GUIDE.md)、[接口定义](BOSSARD_COLLECTOR_API.md)。[下载工具包和审核文件](review_exports/bossard/2026-11-11/README.md)。图片目前辅助审核，不会由 Excel 自动导入业务图片库。
 
-分类规则、Excel 审核方法、本地采集命令及边界见 [CATALOG_IMPORT.md](CATALOG_IMPORT.md)。仓库不内置全站采集数据；应审核实际交付工作簿的“采集报告”，当前样本也不代表完整实时目录。升级启动会创建三张独立目录表，**不会自动把待审核 Excel 写入业务库**。
+分类规则、Excel 审核方法、本地采集命令及边界见 [CATALOG_IMPORT.md](CATALOG_IMPORT.md)。仓库附有391个系列的审核快照和续采缓存，另有317个BN待采，尚未完成全站采集；应审核实际交付工作簿的“采集报告”，当前样本也不代表完整实时目录。升级启动会创建三张独立目录表，**不会自动把待审核 Excel 写入业务库**。
 
 ## 1.8 更新说明
 
@@ -449,7 +450,9 @@ GitHub Actions 会运行回归、Office 首页转换、生成契约一致性和�
 | `rag_assistant.py` / `assistant_service.py` | 检索生成、历史、知识源同步 |
 | `experience_import.py` | 售后和问答 CSV/XLSX 校验、查重 |
 | `catalog_import.py` / `CATALOG_IMPORT.md` | 外部紧固件目录审核、差异预览及幂等导入 / 使用说明 |
-| `bossard_catalog.py` / `requirements-catalog.txt` | 可选的 Bossard 公开目录采集与审核 Excel 生成 / 采集依赖 |
+| `bossard_catalog.py` / `bossard_images.py` | 可选的 Bossard 公开目录、主图采集与审核 Excel 生成 |
+| `run_bossard_collector.py` / `tools/bossard_toolkit/` | 独立采集配置入口、参数模板与 Windows 启动文件 |
+| `BOSSARD_COLLECTOR_GUIDE.md` / `BOSSARD_COLLECTOR_API.md` | 本地参数、采集原理与函数/数据接口定义 |
 | `static/catalog.js` / `static/catalog.css` | 紧固件目录浏览、属性检索和管理员审核导入界面 |
 | `version.json` | 当前应用版本、代码更新时间及变更摘要 |
 
@@ -465,7 +468,7 @@ node test_assistant_ui.js
 node test_catalog_ui.js
 python -m unittest -v test_offline test_offline_http test_checkpoint_conversion
 python -m unittest -v test_experience_import test_rag_assistant test_assistant_http test_knowledge_http test_feature_migrations test_catalog_storage
-python -m unittest -v test_catalog_import test_bossard_catalog
+python -m unittest -v test_catalog_import test_bossard_catalog test_bossard_images
 ```
 
 可选并发压测：`python test_concurrency.py`。测试使用隔离数据；模型和 API 测试主要使用可控测试进程或模拟传输，不代表已经验证真实模型精度、GPU 速度或 DeepSeek 服务连接。

@@ -1,0 +1,12 @@
+{
+  "categories": "categories.json",
+  "cache": "cache",
+  "output_dir": "output",
+  "delay": 3.0,
+  "max_products": 0,
+  "max_category_pages": 1000,
+  "max_sitemap_pages": 200,
+  "browser_executable": "",
+  "download_images": true,
+  "embed_images": true
+}

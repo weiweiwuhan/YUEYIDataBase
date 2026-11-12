@@ -1,0 +1,6 @@
+# 独立采集工具依赖；不需要安装整个网站、PyTorch、MySQL 或 AI 模型。
+# Python 3.10+（推荐 3.11）；Playwright 浏览器需另外安装。
+openpyxl>=3.1,<4
+Pillow>=10,<13
+lxml>=5,<7
+playwright>=1.45,<2

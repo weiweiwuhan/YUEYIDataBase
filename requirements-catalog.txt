@@ -1,4 +1,5 @@
 -r requirements.txt
-# Optional public-catalog collection; web application imports need only openpyxl.
+# Optional public-catalog collection; Pillow/openpyxl are inherited above.
+# Standalone local toolkit: tools/bossard_toolkit/collector_requirements.txt.
 lxml>=5,<7
 playwright>=1.45,<2

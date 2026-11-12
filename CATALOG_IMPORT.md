@@ -49,6 +49,8 @@
 
 ## 本地采集公开页面
 
+可直接使用含现有缓存的[本地采集工具包](review_exports/bossard/2026-11-11/README.md)。Windows 安装、Python 路径、JSON 配置、图片补采、断点与采集原理见 [BOSSARD_COLLECTOR_GUIDE.md](BOSSARD_COLLECTOR_GUIDE.md)，函数与数据接口见 [BOSSARD_COLLECTOR_API.md](BOSSARD_COLLECTOR_API.md)。
+
 采集是独立的可选步骤。网页服务和 Excel 导入只需要 `requirements.txt`；浏览器采集另装：
 
 ```sh
@@ -79,7 +81,9 @@ python bossard_catalog.py --categories bossard_categories.json --crawl --cache w
 
 `--max-products 0`（默认）表示不主动限制发现的 BN 系列数量；可用小数量先检查环境。服务器已有可用 Chrome/Chromium 时，使用 `--browser-executable` 指定可执行文件路径。采集依赖没有装入默认 Docker 网页镜像，建议在单独的本地采集环境运行。
 
-脚本读取 robots 规则，按公开页面链接和可见分页发现记录，访问间隔默认 1.5 秒；不登录、不获取账号信息或价格、不下载产品图片、不遍历猜测 BN 数字，也不绕过验证码。遇到 robots 禁止、403、429 或访问验证会停止相关采集并写入报告。站点可能变更页面结构；仍需核对实际抓到的字段、分类依据和未处理项。
+脚本读取 robots 规则，按公开页面链接和可见分页发现记录，核心CLI访问间隔默认 1.5 秒，独立工具包配置默认3秒；不登录、不获取账号信息或价格、不遍历猜测 BN 数字，也不绕过验证码。默认采集产品详情主画廊照片，排除技术图、标志和推荐图，保存下载原文件与 PNG 副本，并在 Excel 中嵌缩略图。遇到 robots 禁止、403、429 或访问验证会停止相关采集并写入报告。站点可能变更页面结构；仍需核对实际抓到的字段、分类依据和未处理项。
+
+新增图片辅助列位于“产品审核”右侧：产品图片、图片本地路径、图片来源URL、图片状态、图片说明。图片保存在缓存的 `images/` 下，路径相对缓存根目录。它们用于本地审核，当前 Excel 导入不会自动写入网站业务图片库。数据多时用 `--no-embed-images` 减小工作簿，保留本地文件和来源；`--skip-images` 可关闭图片下载。
 
 发现路径还包括 robots 明确声明的同域 sitemap，以及公开的 `/sitemap.xml`；只继续读取其中实际列出的子 sitemap 和已知分类范围内的产品链接。普通页面链接或 sitemap URL 中的分类线索只进入“分类候选”，需要人工核实，不能当作产品面包屑已经确认的分类。
 
@@ -96,6 +100,8 @@ python bossard_catalog.py --categories bossard_categories.json --crawl --cache w
 ```sh
 python bossard_catalog.py --categories bossard_categories.json --products bossard_products.json --output Bossard_标准紧固件_新审核表.xlsx
 ```
+
+若图片已经保存，离线导出时加 `--image-root work/bossard-cache` 可重新嵌入。旧缓存仅缺照片时，使用相同缓存运行 `--crawl --images-only`，无需 `--refresh`；此模式不继续采集新产品，且保留目录发现断点。
 
 脚本默认拒绝覆盖已有输出。明确需要替换时才加 `--overwrite`，不要覆盖已经人工修改的审核表。重新采集请生成新文件，与已审核版本对比后再导入。
 

@@ -1,0 +1,2 @@
+# Keep Windows launcher files CRLF on checkout and normalize them in Git.
+tools/bossard_toolkit/*.bat text eol=crlf
