@@ -2,7 +2,7 @@
 import re
 import unicodedata
 
-ENTITY_TABLES={'projects','products','product_categories','materials','process_types','defect_types','technical_objects','model_tests','technical_experiences','technical_agreements','videos','images','engineering_projects','assets','after_sales'}
+ENTITY_TABLES={'projects','products','product_categories','materials','process_types','defect_types','technical_objects','model_tests','technical_experiences','technical_agreements','videos','images','engineering_projects','assets','after_sales','presales_plans'}
 RELATIONS={
  '适用于':({'technical_experiences'},{'products','product_categories','materials','process_types','defect_types'}),
  '测试对象':({'model_tests'},{'products'}),

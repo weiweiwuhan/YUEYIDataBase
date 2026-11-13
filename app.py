@@ -62,9 +62,17 @@ def commit_write(c,handler):
         from catalog_storage import sync_files
         sync_files(c,execute,UPLOADS,handler._renamed)
         ACTOR.storage_dirty=False
+    from presales import validate_complete
+    for plan_id in getattr(ACTOR,'presales_checks',set()):
+        validate_complete(c,execute,plan_id,lambda aid:check_presales_image(c,aid))
     actor=getattr(ACTOR,'username',None) or 'system'
     execute(c,'INSERT INTO audit_events (actor,action,created_at) VALUES (?,?,?)',(actor,urlparse(handler.path).path,datetime.now(timezone.utc).isoformat(timespec='microseconds')))
     c.commit();invalidate_state()
+def check_presales_image(c,asset_id):
+    from PIL import Image
+    asset,path=local_asset(c,asset_id)
+    if asset['asset_type']!='image':raise ValueError('售前附件必须是图片')
+    with Image.open(path) as image:image.verify()
 class ConflictError(ValueError):pass
 class CatalogServer(ThreadingHTTPServer):
     request_queue_size=256
@@ -156,6 +164,9 @@ def validate(c,t,r,exclude=None):
         if out.get('asset_id'):
             asset=execute(c,'SELECT asset_type,file_name FROM assets WHERE id=?',(out['asset_id'],)).fetchone()
             if not asset or (asset['asset_type']!='document' and Path(asset['file_name']).suffix.lower() not in ('.mp4','.webm','.mov','.avi','.mkv','.m4v')):raise ValueError('请选择文档或视频文件')
+    if t in ('presales_stations','presales_product_photos'):
+        from presales import validate_record
+        validate_record(c,execute,t,out)
     return out
 def mark_product_evidence(c,product_ids):
     checks=getattr(ACTOR,'knowledge_checks',set())
@@ -200,6 +211,17 @@ def save(c,t,r,rid=None):
     if t in ('technical_experiences','model_tests'):checks.add((t,saved_id))
     if t=='knowledge_links' and r['source_table'] in ('technical_experiences','model_tests'):checks.add((r['source_table'],r['source_id']))
     ACTOR.knowledge_checks=checks
+    plan_ids=set()
+    if t=='presales_plans':plan_ids.add(saved_id)
+    if t in ('presales_stations','presales_product_photos'):
+        plan_ids.add(r['plan_id'])
+        if existing:plan_ids.add(existing['plan_id'])
+    if t=='assets' and existing:
+        for field,child in [('image_asset_id','presales_stations'),('asset_id','presales_product_photos')]:
+            plan_ids.update(row['plan_id'] for row in execute(c,f'SELECT plan_id FROM `{child}` WHERE `{field}`=?',(saved_id,)).fetchall())
+    pending=getattr(ACTOR,'presales_checks',set());pending.update(plan_ids);ACTOR.presales_checks=pending
+    if not unchanged and t!='presales_plans':
+        for plan_id in plan_ids:execute(c,'UPDATE presales_plans SET updated_by=?,updated_at=? WHERE id=?',(actor,now,plan_id))
     return saved_id
 def snapshot(c):return {t['name']:rows(c,t['name']) for t in T}
 def seed(c):
@@ -370,6 +392,9 @@ class Handler(BaseHTTPRequestHandler):
                     with path.open('rb') as source:shutil.copyfileobj(source,self.wfile)
                     return
                 raise ValueError('未知离线测试接口')
+            if p.path=='/api/presales/plan':
+                from presales import detail
+                c=connect();q=parse_qs(p.query);self.reply(detail(c,execute,int(q.get('id',['0'])[0])));return
             if p.path=='/api/knowledge/graph':
                 from knowledge_graph import graph,neighborhood
                 c=connect();q=parse_qs(p.query);data=graph(c,execute)
@@ -472,7 +497,7 @@ class Handler(BaseHTTPRequestHandler):
             self.reply({'error':'跨来源写入已拒绝'},403);return
         if self.headers.get('X-AOI-Client')!='local-v1':self.reply({'error':'缺少本地客户端标识'},403);return
         ACTOR.username=None
-        c=None;created=[];renamed=[];write_locked=False;self._renamed=renamed;ACTOR.storage_dirty=False;ACTOR.recapture_snapshot=False;ACTOR.promote_media=False;ACTOR.knowledge_checks=set()
+        c=None;created=[];renamed=[];write_locked=False;self._renamed=renamed;ACTOR.storage_dirty=False;ACTOR.recapture_snapshot=False;ACTOR.promote_media=False;ACTOR.knowledge_checks=set();ACTOR.presales_checks=set()
         try:
             self.connection.settimeout(120)
             n=int(self.headers.get('Content-Length','0'))
@@ -551,9 +576,11 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 if cookie:self.send_header('Set-Cookie',cookie)
                 self.send_header('Cache-Control','no-store');self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
-            self.require(c,p.path in ('/api/delete','/api/import','/api/seed','/api/model-test-delete','/api/model-test-file-delete','/api/knowledge/unlink-binding'))
+            self.require(c,p.path in ('/api/delete','/api/import','/api/seed','/api/model-test-delete','/api/model-test-file-delete','/api/knowledge/unlink-binding','/api/presales/delete','/api/presales/photo-delete'))
             if p.path=='/api/upload':
                 q=parse_qs(p.query);name=safe_filename(q.get('name',['upload.bin'])[0])
+                presales_upload=q.get('kind',[''])[0] in ('presales_product','presales_station')
+                if presales_upload and (n==0 or n>256*1024*1024):raise ValueError('售前图片必须非空且不超过256 MB')
                 if q.get('kind')==['agreement_new'] and n>256*1024*1024:raise ValueError('文档附件单文件最多 256 MB')
                 if q.get('kind')==['agreement']:
                     if n>256*1024*1024:raise ValueError('文档附件单文件最多 256 MB')
@@ -580,6 +607,10 @@ class Handler(BaseHTTPRequestHandler):
                         if not b:raise ValueError('上传不完整')
                         out.write(b);h.update(b);remain-=len(b)
                 WRITE_LOCK.acquire();write_locked=True;c.rollback()
+                presales_plan=presales_station=None
+                if presales_upload:
+                    from presales import prepare_upload
+                    presales_plan,presales_station=prepare_upload(c,execute,q,ConflictError)
                 if q.get('kind')==['agreement_new']:
                     agreement_id=save(c,'technical_agreements',json.loads(q.get('record',['{}'])[0]))
                     q['kind']=['agreement'];q['agreement_id']=[str(agreement_id)]
@@ -595,6 +626,7 @@ class Handler(BaseHTTPRequestHandler):
                 ext=dest.suffix.lower();kind='image' if ext in ('.png','.bmp','.jpg','.jpeg','.tif','.tiff','.webp') else 'archive' if ext=='.zip' else 'other'
                 experience=q.get('kind')==['technical_experience']
                 modeltest=q.get('kind')==['modeltest']
+                if presales_upload and kind!='image':raise ValueError('请上传原始产品照片或实验室效果图，不能上传非图片文件')
                 if modeltest and kind!='image':raise ValueError('请上传图片格式的测试原图或效果图')
                 engineering=q.get('kind',[''])[0]=='engineering'
                 agreement=q.get('kind')==['agreement']
@@ -605,6 +637,14 @@ class Handler(BaseHTTPRequestHandler):
                 if q.get('image_only')==['1'] and kind!='image':raise ValueError('请选择图片文件')
                 info=image_info(dest) if kind=='image' else {}
                 aid=save(c,'assets',dict(asset_type=kind,file_name=name,storage_location_id=lid,relative_path=dest.name,storage_mode='file',file_size=n,sha256=h.hexdigest(),status='available'))
+                if presales_upload:
+                    from presales import bind_upload
+                    check_presales_image(c,aid)
+                    result=bind_upload(c,execute,save,presales_plan,presales_station,aid)
+                    commit_write(c,self)
+                    try:self.reply(dict(ok=True,asset_id=aid,detail=result))
+                    except (BrokenPipeError,ConnectionResetError):pass
+                    return
                 if experience:
                     from catalog_migrations import promote
                     save(c,'technical_experience_files',dict(experience_id=int(q['experience_id'][0]),asset_id=aid));promote(c,execute,save)
@@ -740,6 +780,24 @@ class Handler(BaseHTTPRequestHandler):
                     if old:execute(c,'DELETE FROM asset_relations WHERE id=?',(old['id'],))
                 elif not old:save(c,'asset_relations',dict(source_asset_id=en['asset_id'],target_asset_id=image['asset_id'],relation_type='paired'))
                 result=dict(ok=True)
+            elif p.path=='/api/presales/save':
+                from presales import save_draft
+                result={'ok':True,'detail':save_draft(c,execute,save,payload,self.identity(c),ConflictError)}
+            elif p.path=='/api/presales/complete':
+                from presales import finish
+                result={'ok':True,'detail':finish(c,execute,save,payload,ConflictError)}
+            elif p.path=='/api/presales/delete':
+                from presales import delete_plan
+                result=delete_plan(c,execute,payload,ConflictError)
+            elif p.path=='/api/presales/photo-delete':
+                from presales import row,check_version,detail
+                plan=row(c,execute,'presales_plans',payload['id']);check_version(plan,payload,ConflictError)
+                photo=row(c,execute,'presales_product_photos',payload['photo_id'])
+                if photo['plan_id']!=plan['id']:raise ValueError('该照片不属于当前方案')
+                execute(c,'DELETE FROM presales_product_photos WHERE id=?',(photo['id'],))
+                stamp=datetime.now(timezone.utc).isoformat(timespec='microseconds')
+                execute(c,'UPDATE presales_plans SET updated_by=?,updated_at=? WHERE id=?',(ACTOR.username,stamp,plan['id']))
+                ACTOR.presales_checks.add(plan['id']);result={'ok':True,'detail':detail(c,execute,plan['id'])}
             elif p.path=='/api/knowledge/unlink-binding':
                 from dictionary_maintenance import unlink_binding
                 result=unlink_binding(c,execute,save,payload,ConflictError)
@@ -768,6 +826,7 @@ class Handler(BaseHTTPRequestHandler):
                 result=dict(ok=True,id=rid)
             elif p.path=='/api/save':
                 t=payload['table']
+                if t in ('presales_plans','presales_stations','presales_product_photos'):raise ValueError('请在售前方案页面统一保存方案与相机工位配置')
                 if t not in TABLES:raise ValueError('未知表')
                 if payload.get('id') and 'expected_updated_at' in payload:
                     current=execute(c,f'SELECT updated_at FROM `{t}` WHERE id=?',(payload['id'],)).fetchone()
@@ -775,6 +834,7 @@ class Handler(BaseHTTPRequestHandler):
                 rid=save(c,t,payload['record'],payload.get('id'));result=dict(ok=True,id=rid)
             elif p.path=='/api/delete':
                 t=payload['table']
+                if t in ('presales_plans','presales_stations','presales_product_photos'):raise ValueError('请在售前方案页面删除方案或调整工位，避免留下不完整方案')
                 if t not in TABLES:raise ValueError('未知表')
                 if 'expected_updated_at' in payload:
                     current=execute(c,f'SELECT updated_at FROM `{t}` WHERE id=?',(int(payload['id']),)).fetchone()

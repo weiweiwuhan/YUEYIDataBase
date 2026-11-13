@@ -1,5 +1,5 @@
 // Record-level knowledge editing and two-way browsing.
-const knowledgeEntityTables=['projects','products','product_categories','materials','process_types','defect_types','technical_objects','model_tests','technical_experiences','technical_agreements','videos','images','engineering_projects','assets','after_sales'];
+const knowledgeEntityTables=['projects','products','product_categories','materials','process_types','defect_types','technical_objects','model_tests','technical_experiences','technical_agreements','videos','images','engineering_projects','assets','after_sales','presales_plans'];
 function knowledgeNormalize(value){return String(value||'').normalize('NFKC').replace(/\s+/g,'').toLowerCase()}
 function knowledgeStatuses(){return S.schema?.find(t=>t.name==='knowledge_links')?.fields.find(f=>f.name==='confirmation_status')?.choices||['待补充','待验证','经验建议','已验证']}
 function applyFieldConstraints(root,t){const meta=S.schema?.find(x=>x.name===t);if(!meta)return;root.querySelectorAll('[name]').forEach(input=>{const field=meta.fields.find(f=>f.name===input.name);if(!field)return;if(field.maxLength!=null)input.maxLength=field.maxLength;if(field.minimum!=null)input.min=field.minimum;if(field.maximum!=null)input.max=field.maximum})}

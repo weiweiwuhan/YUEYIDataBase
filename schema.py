@@ -52,6 +52,9 @@ add('after_sales','售后经验','主表','绑定项目与产品，积累故障�
 add('agreement_files','文档附件','关系','文档原文件保存在工程数据目录，可下载。',[col('agreement_id','文档资料','int',True,'technical_agreements'),col('asset_id','附件资源','int',True,'assets')],unique=[['asset_id']])
 add('model_tests','软件测试记录','主表','按模块记录大模型、AI 检测稳定性、运行时间、算法重复误差等人工测试。',[col('name','测试名称',required=True),col('test_module','测试模块'),col('inspection_surface','检测面与测试范围'),col('acceptance_criteria','判定标准'),col('parameter_snapshot','设备与模型参数快照'),col('confirmation_status','确认状态',choices=STATUS),col('test_method','测试方法与步骤'),col('expected_result','预期结果'),col('actual_result','实际结果与测量数据'),col('project_id','关联项目','int',ref='projects'),col('model_name','模型 / 软件 / 算法名称',required=True),col('model_version','模型版本'),col('test_date','测试日期'),col('result','效果评价',choices=['待评价','效果好','一般','效果差']),col('prompt','测试环境备注'),col('product_id','关联产品','int',ref='products'),col('test_count','测试产品总数','int'),col('detection_rate','检出率 %','real'),col('miss_rate','历史漏检率 %','real'),col('yield_rate','良率 %','real'),col('light_source','光源类型'),col('camera','相机型号'),col('lens','镜头型号'),col('working_distance_mm','工作距离 mm','real'),col('product_spec','产品规格'),col('remark','效果说明')])
 add('model_test_files','模型测试图片','关系','每次测试可保存多张原图和效果图。',[col('test_id','测试记录','int',True,'model_tests'),col('asset_id','图片文件','int',True,'assets'),col('role','图片用途',required=True,choices=['input','result'])],unique=[['asset_id']])
+add('presales_plans','售前方案记录','主表','一个方案包含多个相机工位；一相机一工位，每工位一张实验室效果图。',[col('name','方案名称',required=True),col('plan_date','方案日期'),col('project_id','关联项目','int',ref='projects'),col('product_id','关联产品','int',ref='products'),col('camera_count','相机个数','int',True),col('status','资料状态',required=True,choices=['草稿','已完成']),col('remark','方案备注')])
+add('presales_stations','售前相机工位','关系','每个相机对应一个工位，分别登记成像配置与一张实验室效果图。',[col('plan_id','售前方案','int',True,'presales_plans'),col('station_no','相机 / 工位序号','int',True),col('name','工位名称',required=True),col('resolution','相机分辨率',required=True),col('camera_model','相机型号',required=True),col('lens_model','镜头型号',required=True),col('lighting_method','打光方式',required=True,choices=['倾斜打光','平视打光','同轴打光','背光','其他']),col('lighting_angle_deg','倾斜角度 °','real'),col('use_prism','是否使用棱镜',required=True,choices=['否','是']),col('light_source_type','光源类型',required=True),col('light_source_model','光源型号',required=True),col('image_asset_id','实验室效果图','int',ref='assets'),col('remark','工位备注')],unique=[['plan_id','station_no'],['plan_id','image_asset_id']])
+add('presales_product_photos','售前产品原始照片','关系','手机拍照或本地上传的产品原始照片；与实验室效果图分开保存。',[col('plan_id','售前方案','int',True,'presales_plans'),col('asset_id','原始产品照片','int',True,'assets')],unique=[['plan_id','asset_id']])
 add('technical_experiences','操作规范与技术经验','主表','不绑定项目的通用技能、标注规范、AI 原理和工具操作说明；正文自动进入 AI 问答检索。',[col('name','经验标题',required=True),col('experience_type','经验类型',choices=['标注规范','调试经验','原理解释','工具操作','其他']),col('conditions','适用条件与限制'),col('confirmation_status','确认状态',choices=STATUS),col('category','分类'),col('tags','关键词'),col('content','规范与经验正文',required=True),col('remark','备注')])
 add('technical_experience_files','技术经验—资料','关系','为通用经验关联文档或视频；每条关联选择一种资料。',[col('experience_id','技术经验','int',True,'technical_experiences'),col('asset_id','文档或上传视频','int',ref='assets'),col('video_id','已有视频','int',ref='videos')],unique=[['experience_id','asset_id'],['experience_id','video_id']])
 add('document_types','文档类别','配置','维护可复用的文档分类；新增类别会出现在后续上传下拉选项中。',[col('name','类别名称',required=True)],unique=[['name']])
@@ -63,6 +66,13 @@ for item in T:
     for field in item['fields']:
         if field['name'] in ('created_by','created_at','updated_by','updated_at'):field['readonly']=True
 TABLES={t['name']:t for t in T}
+for field in TABLES['presales_plans']['fields']:
+    if field['name']=='camera_count':field.update(minimum=1,maximum=64)
+    if field['name']=='status':field['readonly']=True
+    if field['name']=='remark':field['maxLength']=20000
+for field in TABLES['presales_stations']['fields']:
+    if field['name']=='station_no':field.update(minimum=1,maximum=64)
+    if field['name']=='lighting_angle_deg':field.update(maximum=90,unit='°')
 for field in TABLES['videos']['fields']:
     if field['name'] in ('image_id','asset_id','preview_asset_id'):field['hidden']=True
 for field in TABLES['assets']['fields']:

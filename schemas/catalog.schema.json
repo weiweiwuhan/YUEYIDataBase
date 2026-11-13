@@ -2445,6 +2445,303 @@
         ]
       }
     },
+    "presales_plans": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "presales_plans",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "plan_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "project_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "product_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "camera_count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64
+          },
+          "status": {
+            "type": "string",
+            "maxLength": 191,
+            "enum": [
+              "草稿",
+              "已完成"
+            ],
+            "minLength": 1
+          },
+          "remark": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 20000
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "name",
+          "camera_count",
+          "status"
+        ]
+      }
+    },
+    "presales_stations": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "presales_stations",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "plan_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "station_no": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "resolution": {
+            "type": "string",
+            "maxLength": 1024,
+            "minLength": 1
+          },
+          "camera_model": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "lens_model": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "lighting_method": {
+            "type": "string",
+            "maxLength": 191,
+            "enum": [
+              "倾斜打光",
+              "平视打光",
+              "同轴打光",
+              "背光",
+              "其他"
+            ],
+            "minLength": 1
+          },
+          "lighting_angle_deg": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 90,
+            "description": "单位：°"
+          },
+          "use_prism": {
+            "type": "string",
+            "maxLength": 191,
+            "enum": [
+              "否",
+              "是"
+            ],
+            "minLength": 1
+          },
+          "light_source_type": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "light_source_model": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1
+          },
+          "image_asset_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "remark": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "plan_id",
+          "station_no",
+          "name",
+          "resolution",
+          "camera_model",
+          "lens_model",
+          "lighting_method",
+          "use_prism",
+          "light_source_type",
+          "light_source_model"
+        ]
+      }
+    },
+    "presales_product_photos": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "presales_product_photos",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "plan_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "asset_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 191
+          }
+        },
+        "required": [
+          "plan_id",
+          "asset_id"
+        ]
+      }
+    },
     "technical_experiences": {
       "type": "array",
       "items": {

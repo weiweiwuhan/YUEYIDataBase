@@ -73,7 +73,7 @@ def graph(c,execute):
         known.add(key);edges.append({'source':a,'target':b,'relation':rel,**extra})
     for raw in execute(c,'SELECT * FROM knowledge_links ORDER BY id').fetchall():
         r=dict(raw);edge(r['source_table'],r['source_id'],r['relation'],r['target_table'],r['target_id'],link_id=r['id'],updated_at=r.get('updated_at'),conditions=r.get('conditions'),confirmation_status=r.get('confirmation_status') or '待补充',evidence_test_id=r.get('evidence_test_id'),evidence_document_id=r.get('evidence_document_id'),evidence_locator=r.get('evidence_locator'),created_by=r.get('created_by'))
-    mappings=[('project_products','projects','project_id','关联产品','products','product_id'),('image_defects','images','image_id','展示缺陷','defect_types','defect_type_id'),('project_assets','projects','project_id','关联资料','assets','asset_id'),('asset_products','assets','asset_id','相关产品','products','product_id'),('agreement_products','technical_agreements','agreement_id','相关产品','products','product_id'),('agreement_files','technical_agreements','agreement_id','附带文件','assets','asset_id'),('model_test_files','model_tests','test_id','附带测试图片','assets','asset_id'),('product_processes','products','product_id','采用工艺','process_types','process_id')]
+    mappings=[('project_products','projects','project_id','关联产品','products','product_id'),('image_defects','images','image_id','展示缺陷','defect_types','defect_type_id'),('project_assets','projects','project_id','关联资料','assets','asset_id'),('asset_products','assets','asset_id','相关产品','products','product_id'),('agreement_products','technical_agreements','agreement_id','相关产品','products','product_id'),('agreement_files','technical_agreements','agreement_id','附带文件','assets','asset_id'),('model_test_files','model_tests','test_id','附带测试图片','assets','asset_id'),('product_processes','products','product_id','采用工艺','process_types','process_id'),('presales_product_photos','presales_plans','plan_id','产品原始照片','assets','asset_id')]
     for table,st,sf,rel,tt,tf in mappings:
         for r in execute(c,f'SELECT * FROM `{table}`').fetchall():
             extra={'binding':{'kind':'product_process','id':r['id'],'target_id':r[tf],'updated_at':r['updated_at']}} if table=='product_processes' else {}
@@ -84,6 +84,8 @@ def graph(c,execute):
             if r.get(fk):
                 extra={'binding':{'kind':'product_material','id':r['id'],'target_id':r[fk],'updated_at':r.get('updated_at')}} if t=='products' and fk=='material_id' else {}
                 edge(t,r['id'],rel,target,r[fk],origin='已有绑定',**extra)
+    for r in execute(c,'SELECT * FROM presales_stations WHERE image_asset_id IS NOT NULL').fetchall():
+        edge('presales_plans',r['plan_id'],'实验室效果图','assets',r['image_asset_id'],origin='已有绑定',conditions='相机/工位'+str(r['station_no'])+' · '+r['name'])
     for r in execute(c,'SELECT * FROM technical_experience_files').fetchall():
         edge('technical_experiences',r['experience_id'],'附带资料','assets' if r['asset_id'] else 'videos',r['asset_id'] or r['video_id'],origin='已有绑定')
     for r in execute(c,"SELECT * FROM asset_relations WHERE relation_type='paired'").fetchall():edge('assets',r['source_asset_id'],'工程关联图片','assets',r['target_asset_id'],origin='已有绑定')

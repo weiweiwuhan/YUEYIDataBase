@@ -1,4 +1,4 @@
--- AOI Industrial Asset Catalog | 34 tables
+-- AOI Industrial Asset Catalog | 37 tables
 
 -- Non-destructive DDL: existing tables are preserved.
 
@@ -521,6 +521,76 @@ CREATE TABLE IF NOT EXISTS `model_test_files` (
   CHECK (`asset_id` IS NULL OR `asset_id` >= 0),
   CHECK (`role` IN ('input', 'result')),
   UNIQUE (`asset_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `presales_plans` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `name` VARCHAR(191) NOT NULL,
+  `plan_date` VARCHAR(191),
+  `project_id` BIGINT,
+  `product_id` BIGINT,
+  `camera_count` BIGINT NOT NULL,
+  `status` VARCHAR(191) NOT NULL,
+  `remark` MEDIUMTEXT,
+  `created_by` VARCHAR(191),
+  `created_at` VARCHAR(191),
+  `updated_by` VARCHAR(191),
+  `updated_at` VARCHAR(191),
+  FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`project_id` IS NULL OR `project_id` >= 0),
+  FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`product_id` IS NULL OR `product_id` >= 0),
+  CHECK (`camera_count` IS NULL OR `camera_count` <= 64),
+  CHECK (`camera_count` IS NULL OR `camera_count` >= 1),
+  CHECK (`status` IN ('草稿', '已完成'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `presales_stations` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `plan_id` BIGINT NOT NULL,
+  `station_no` BIGINT NOT NULL,
+  `name` VARCHAR(191) NOT NULL,
+  `resolution` VARCHAR(1024) NOT NULL,
+  `camera_model` VARCHAR(191) NOT NULL,
+  `lens_model` VARCHAR(191) NOT NULL,
+  `lighting_method` VARCHAR(191) NOT NULL,
+  `lighting_angle_deg` DOUBLE,
+  `use_prism` VARCHAR(191) NOT NULL,
+  `light_source_type` VARCHAR(191) NOT NULL,
+  `light_source_model` VARCHAR(191) NOT NULL,
+  `image_asset_id` BIGINT,
+  `remark` VARCHAR(1024),
+  `created_by` VARCHAR(191),
+  `created_at` VARCHAR(191),
+  `updated_by` VARCHAR(191),
+  `updated_at` VARCHAR(191),
+  FOREIGN KEY (`plan_id`) REFERENCES `presales_plans` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`plan_id` IS NULL OR `plan_id` >= 0),
+  CHECK (`station_no` IS NULL OR `station_no` <= 64),
+  CHECK (`station_no` IS NULL OR `station_no` >= 1),
+  CHECK (`lighting_method` IN ('倾斜打光', '平视打光', '同轴打光', '背光', '其他')),
+  CHECK (`lighting_angle_deg` IS NULL OR `lighting_angle_deg` <= 90),
+  CHECK (`lighting_angle_deg` IS NULL OR `lighting_angle_deg` >= 0),
+  CHECK (`use_prism` IN ('否', '是')),
+  FOREIGN KEY (`image_asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`image_asset_id` IS NULL OR `image_asset_id` >= 0),
+  UNIQUE (`plan_id`, `station_no`),
+  UNIQUE (`plan_id`, `image_asset_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `presales_product_photos` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `plan_id` BIGINT NOT NULL,
+  `asset_id` BIGINT NOT NULL,
+  `created_by` VARCHAR(191),
+  `created_at` VARCHAR(191),
+  `updated_by` VARCHAR(191),
+  `updated_at` VARCHAR(191),
+  FOREIGN KEY (`plan_id`) REFERENCES `presales_plans` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`plan_id` IS NULL OR `plan_id` >= 0),
+  FOREIGN KEY (`asset_id`) REFERENCES `assets` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CHECK (`asset_id` IS NULL OR `asset_id` >= 0),
+  UNIQUE (`plan_id`, `asset_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `technical_experiences` (
