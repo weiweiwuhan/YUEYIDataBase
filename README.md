@@ -2,7 +2,7 @@
 
 > 以项目串联检测资料，让每一张图片有出处、每一个缺陷可追溯、每一次售后经验可复用。
 
-当前应用版本：**1.10.0**，版本及代码更新时间以 [version.json](version.json) 和网页左下角显示为准。
+当前应用版本：**1.11.0**，版本及代码更新时间以 [version.json](version.json) 和网页左下角显示为准。
 
 本项目将项目、产品、检测工程、图片、缺陷、技术协议和售后经验关联管理，支持公司内网共享、模型测试记录、本地模型离线分割，以及基于知识库的 AI 问答。
 
@@ -32,8 +32,26 @@
 | 大模型离线测试 | 选择本机检查点、批量排队、逐图分割、原图叠加、阈值调整和结果保存 |
 | AI 智能问答助手 | 本地检索、适用范围筛选、DeepSeek 流式回答、停止生成、来源引用、私人历史和反馈 |
 | 账号与维护 | 录入员/管理员、批量账号、作者记录、编辑冲突检查和操作审计 |
+| 私人知识备份 | 管理员专属的图片、PPT、文档、实验数据与思考笔记；独立存储、预览、检索、回收站和完整备份 |
 
 “使用指南”已替换为“AI智能问答助手”；MySQL SQL 栏目不再显示在导航中，但 MySQL 运行支持保留，SQL 导出接口仅管理员可用。
+
+## 1.11.0：管理员私人知识备份
+
+管理员登录后，左侧显示“私人知识备份”；访客及录入员不显示此入口。**所有管理员账户可访问该区域**，不是按管理员个人再分权限。列表、笔记、文件、缩略图、预览、上传及完整备份下载均由服务端逐次校验管理员身份，直接访问链接也不能绕过。
+
+- 点击“新增私人资料”，填写标题、分类、关键词和思考备注；可只保存文字，也可选择或拖入多个附件。适合技术实现图、PPT、Word/PDF、实验 Excel/CSV/JSON/NPY，以及 TXT/Markdown 等个人文档。单文件最多256 MB，每条资料最多100个附件。
+- 图片支持放大，PDF和文本支持在线查看，PPT/Word等支持首页封面预览及原文件下载。Office 首页预览依赖服务器本机 LibreOffice；没有时仍能备份、下载，显示占位封面。文本预览上限2 MB，更大文件下载查看。
+- 私人笔记、文件名和附件内容不进入公共业务表、资料检索、知识图谱、普通 JSON/CSV/SQL 导出或 RAG，不发送给外部 AI 服务。预览缓存也位于私人目录，不复用公开资料缓存。
+- 记录作者、更新时间和文件 SHA-256；编辑及上传检查版本冲突。上传中断保留已保存笔记和成功附件。整条资料可移入回收站后恢复；“移除附件”取消展示，原文件仍保留在独立完整备份中，当前没有永久清理入口。
+
+私人资料在运行服务电脑的 `AOI_DATA/private_knowledge/` 中保存，使用独立 `vault.sqlite3` 元数据库，**业务库使用 MySQL 时也相同**。公开业务表数量仍为37张。入口中的“下载完整私人备份”生成 ZIP，包含一致的元数据快照、原文件、回收站和已移除附件，不包含可重建的预览缓存。普通 JSON 备份不包含私人资料。
+
+恢复私人备份时，先停止服务并备份、移走现有 `private_knowledge` 目录，再将 ZIP 内同名目录放回实际 `AOI_DATA`，最后重启；不要覆盖正在运行的数据库或将旧 WAL 文件混入恢复目录。
+
+这里提供的是应用账户权限隔离，文件未做静态加密。有服务器磁盘或完整备份读取权限的人仍能读取原文件，私人 ZIP 也包含敏感内容，应保存在你控制的位置。仓库只提交功能代码，不提交上传的私人资料。
+
+更新全部代码后重启服务并按 **Ctrl+F5** 刷新，左下角应显示 **1.11.0**。
 
 ## 1.10.0：售前方案记录
 
@@ -419,6 +437,10 @@ graph LR
 ├── trash/model_tests/        # 被删除的模型测试图片回收区
 ├── offline_models.json       # 本机离线模型配置
 ├── offline_tests/            # 离线任务、原图、分数图、叠图和日志
+├── private_knowledge/         # 管理员专属，独立于公开资料及 RAG
+│   ├── vault.sqlite3         # 私人笔记、附件信息、回收站
+│   ├── files/                # 私人原文件（含取消展示的附件）
+│   └── previews/             # 受同样权限保护的预览缓存
 └── rag/
     ├── knowledge_sources.json # 导入的问答原始知识条目
     ├── index.json             # 可重建检索索引
@@ -474,6 +496,7 @@ GitHub Actions 会运行回归、Office 首页转换、生成契约一致性和�
 | `knowledge_contract.py` / `knowledge_graph.py` | 统一术语与关系范围、对象歧义处理、证据检查和条件筛选 |
 | `dictionary_maintenance.py` | 材质/工艺引用检查、管理员逐条解除产品绑定与并发校验 |
 | `presales.py` / `static/presales.js` / `static/presales.css` | 售前方案、相机工位、图片完整性与权限校验 / 录入及预览界面 |
+| `private_knowledge.py` / `static/private_knowledge.js` / `static/private_knowledge.css` | 管理员私人资料独立存储、完整备份与专属界面 |
 | `media_preview.py` / `backfill_previews.py` | 文档首页与视频首帧封面 / 已有文档封面补生成 |
 | `verify_knowledge.py` | 只读检查旧知识引用、已验证依据及同名对象 |
 | `app.py` / `auth.py` | HTTP、业务、上传及账号权限 |
@@ -490,7 +513,7 @@ GitHub Actions 会运行回归、Office 首页转换、生成契约一致性和�
 | `static/catalog.js` / `static/catalog.css` | 紧固件目录浏览、属性检索和管理员审核导入界面 |
 | `version.json` | 当前应用版本、代码更新时间及变更摘要 |
 
-修改离线、问答、技术经验、售前方案或紧固件目录前端源码后，执行 `python build_frontend.py`。仅修改本文档不改变应用版本。
+修改离线、问答、技术经验、售前方案、私人资料或紧固件目录前端源码后，执行 `python build_frontend.py`。仅修改本文档不改变应用版本。
 
 核心回归：
 
@@ -504,6 +527,9 @@ python -m unittest -v test_offline test_offline_http test_checkpoint_conversion
 python -m unittest -v test_experience_import test_rag_assistant test_assistant_http test_knowledge_http test_feature_migrations test_catalog_storage
 python -m unittest -v test_catalog_import test_bossard_catalog test_bossard_images test_bossard_runtime test_dictionary_http
 python -m unittest -v test_presales_http
+python -m unittest -v test_private_knowledge_http
 ```
 
 可选并发压测：`python test_concurrency.py`。测试使用隔离数据；模型和 API 测试主要使用可控测试进程或模拟传输，不代表已经验证真实模型精度、GPU 速度或 DeepSeek 服务连接。
+
+可选私人资料浏览器检查：安装 Playwright 并准备 Chromium 后，运行 `python tools/check_private_knowledge_ui.py --screenshots /tmp/private-ui`，覆盖真实图片/PPT/文档/CSV上传、预览、回收站、备份下载、手机布局、退出清除和普通账户隔离，使用临时数据库。

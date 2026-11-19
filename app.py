@@ -5,6 +5,7 @@ from pathlib import Path,PurePosixPath
 from http.server import ThreadingHTTPServer,BaseHTTPRequestHandler
 from urllib.parse import urlparse,parse_qs
 from schema import T,TABLES,ddl
+from private_knowledge import PrivateKnowledge,PrivateConflict
 ROOT=Path(__file__).resolve().parent
 DATA=Path(os.environ.get('AOI_DATA',str(ROOT/'data'))).resolve();DATA.mkdir(parents=True,exist_ok=True)
 UPLOADS=DATA/'uploads';UPLOADS.mkdir(exist_ok=True)
@@ -13,6 +14,13 @@ MYSQL=os.environ.get('DB_ENGINE','sqlite')=='mysql'
 PORT=int(os.environ.get('PORT','8765'))
 ASSISTANT_ENGINE=None
 ASSISTANT_ENGINE_LOCK=threading.Lock()
+PRIVATE_KNOWLEDGE=None
+PRIVATE_KNOWLEDGE_LOCK=threading.Lock()
+def get_private_knowledge():
+    global PRIVATE_KNOWLEDGE
+    with PRIVATE_KNOWLEDGE_LOCK:
+        if PRIVATE_KNOWLEDGE is None:PRIVATE_KNOWLEDGE=PrivateKnowledge(DATA)
+        return PRIVATE_KNOWLEDGE
 def get_assistant_engine():
     global ASSISTANT_ENGINE
     with ASSISTANT_ENGINE_LOCK:
@@ -344,7 +352,9 @@ class Handler(BaseHTTPRequestHandler):
         else:encoded=False
         self.send_response(status)
         if encoded:self.send_header('Content-Encoding','gzip')
-        self.send_header('Vary','Accept-Encoding');self.send_header('Content-Type',ctype);self.send_header('Content-Length',str(len(b)));self.send_header('X-Content-Type-Options','nosniff');self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(b)
+        private=self.path.startswith('/api/private-knowledge/')
+        if private:self.send_header('Referrer-Policy','no-referrer')
+        self.send_header('Vary','Accept-Encoding, Cookie' if private else 'Accept-Encoding');self.send_header('Content-Type',ctype);self.send_header('Content-Length',str(len(b)));self.send_header('X-Content-Type-Options','nosniff');self.send_header('Cache-Control','no-store, private' if private else 'no-store');self.end_headers();self.wfile.write(b)
     def stream_chat(self,engine,user,payload):
         from rag_assistant import StreamCancelled
         question=engine.rag.validate_chat_request(user,payload.get('question',''),payload.get('conversation_id'))
@@ -366,6 +376,20 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         p=urlparse(self.path);c=None
         try:
+            if p.path.startswith('/api/private-knowledge/'):
+                c=connect();self.require(c,True);c.close();c=None
+                store=get_private_knowledge();q=parse_qs(p.query)
+                if p.path=='/api/private-knowledge/list':self.reply(store.listing(q));return
+                if p.path=='/api/private-knowledge/detail':self.reply(store.detail(q.get('id',['0'])[0]));return
+                if p.path=='/api/private-knowledge/file':
+                    from private_knowledge import serve_file
+                    serve_file(self,store,q);return
+                if p.path=='/api/private-knowledge/backup':
+                    with store.backup() as path:
+                        self.send_response(200);self.send_header('Content-Type','application/zip');self.send_header('Content-Length',str(path.stat().st_size));self.send_header('Content-Disposition','attachment; filename="private-knowledge-'+datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')+'.zip"');self.send_header('Cache-Control','no-store, private');self.send_header('X-Content-Type-Options','nosniff');self.end_headers()
+                        with path.open('rb') as source:shutil.copyfileobj(source,self.wfile)
+                    return
+                raise ValueError('未知私人资料接口')
             if p.path.startswith('/api/assistant/'):
                 c=connect();user=self.require(c);c.close();c=None;engine=get_assistant_engine();q=parse_qs(p.query)
                 if p.path=='/api/assistant/status':self.reply(engine.status());return
@@ -487,7 +511,7 @@ class Handler(BaseHTTPRequestHandler):
             if p.path in ('/','/app.js','/style.css','/offline.js','/offline.css'):
                 f=ROOT/'static'/({'/':'index.html'}.get(p.path,p.path[1:]));self.reply(f.read_bytes(),ctype={'/':'text/html; charset=utf-8','/app.js':'text/javascript; charset=utf-8','/style.css':'text/css; charset=utf-8','/offline.css':'text/css; charset=utf-8','/offline.js':'text/javascript; charset=utf-8'}[p.path]);return
             self.reply({'error':'Not found'},404)
-        except Exception as e:self.reply({'error':str(e)},403 if isinstance(e,PermissionError) else 409 if isinstance(e,ConflictError) else 400)
+        except Exception as e:self.reply({'error':str(e)},403 if isinstance(e,PermissionError) else 409 if isinstance(e,(ConflictError,PrivateConflict)) else 400)
         finally:
             if c:c.close()
     def do_POST(self):
@@ -503,6 +527,22 @@ class Handler(BaseHTTPRequestHandler):
             n=int(self.headers.get('Content-Length','0'))
             if n>1024*1024*1024:raise ValueError('单次上传上限 1 GB')
             p=urlparse(self.path);c=connect()
+            if p.path.startswith('/api/private-knowledge/'):
+                user=self.require(c,True);c.close();c=None
+                store=get_private_knowledge();q=parse_qs(p.query)
+                if p.path=='/api/private-knowledge/upload':
+                    detail=store.upload(q,self.rfile,n,user,safe_filename)
+                    self.reply({'ok':True,'detail':detail});return
+                if not 0<n<=512*1024:raise ValueError('私人资料请求必须非空且不超过512 KB')
+                content=self.rfile.read(n)
+                if len(content)!=n:raise ValueError('私人资料请求不完整')
+                payload=json.loads(content)
+                if not isinstance(payload,dict):raise ValueError('私人资料请求必须是对象')
+                if p.path=='/api/private-knowledge/save':result={'ok':True,'detail':store.save(payload,user)}
+                elif p.path in ('/api/private-knowledge/delete','/api/private-knowledge/restore','/api/private-knowledge/file-delete'):
+                    result=store.change(p.path.rsplit('/',1)[1],payload,user)
+                else:raise ValueError('未知私人资料接口')
+                self.reply(result);return
             if p.path in ('/api/catalog/import-preview','/api/catalog/import'):
                 user=self.require(c,True);q=parse_qs(p.query)
                 from catalog_import import MAX_UPLOAD_BYTES,prepare_import,public_plan,validate_preview_token,apply_import
@@ -874,7 +914,7 @@ class Handler(BaseHTTPRequestHandler):
             for old,new in reversed(renamed):
                 if new.exists():old.parent.mkdir(parents=True,exist_ok=True);new.rename(old)
             for f in created:f.unlink(missing_ok=True)
-            self.reply({'error':str(e)},403 if isinstance(e,PermissionError) else 409 if isinstance(e,ConflictError) else 400)
+            self.reply({'error':str(e)},403 if isinstance(e,PermissionError) else 409 if isinstance(e,(ConflictError,PrivateConflict)) else 400)
         finally:
             if c:c.close()
             if write_locked:WRITE_LOCK.release()
