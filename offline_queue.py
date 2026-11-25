@@ -14,7 +14,7 @@ def atomic_json(path,value):
     tmp.write_text(json.dumps(value,ensure_ascii=False,allow_nan=False),encoding='utf-8');tmp.replace(path)
 def parameters(value):
     if not isinstance(value,dict):raise ValueError('阈值参数格式不正确')
-    result={'seg_threshold':.06,'image_threshold':None,'min_area':8,'alpha':.5,'smooth_sigma':1.2}
+    result={'seg_threshold':.5,'image_threshold':None,'min_area':8,'alpha':.5,'smooth_sigma':0}
     if set(value)-set(result):raise ValueError('未知分割参数')
     result.update(value)
     for key in ('seg_threshold','image_threshold','alpha','smooth_sigma'):
@@ -22,6 +22,7 @@ def parameters(value):
         if isinstance(result[key],bool):raise ValueError('阈值必须是有限数值')
         result[key]=float(result[key])
         if not math.isfinite(result[key]) or result[key]<0:raise ValueError('阈值必须是非负有限数值')
+    if not 0<=result['seg_threshold']<=1 or (result['image_threshold'] is not None and not 0<=result['image_threshold']<=1):raise ValueError('分割阈值与图像阈值须为 0–1')
     if not 0<=result['alpha']<=1 or result['smooth_sigma']>10:raise ValueError('透明度须为 0–1，平滑参数须为 0–10')
     if isinstance(result['min_area'],bool) or int(result['min_area'])!=float(result['min_area']) or not 1<=int(result['min_area'])<=20000000:raise ValueError('最小缺陷面积须为正整数')
     result['min_area']=int(result['min_area']);return result
@@ -30,7 +31,7 @@ class Runner:
     def __init__(self,model,runner_path,folder,on_start=None):
         config=folder/'runner-model.json';atomic_json(config,model)
         self.close_lock=threading.Lock();self.log=(folder/'runner.log').open('ab');self.messages=queue.Queue()
-        self.process=subprocess.Popen([model['python'],str(runner_path),'--model-json',str(config),'--serve'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=self.log,text=True,encoding='utf-8',bufsize=1,cwd=model.get('project_dir') if model.get('backend')=='dinov3' else None,env={**os.environ,'PYTHONIOENCODING':'utf-8','PYTHONUTF8':'1'})
+        self.process=subprocess.Popen([model['python'],str(runner_path),'--model-json',str(config),'--serve'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=self.log,text=True,encoding='utf-8',bufsize=1,cwd=model.get('project_dir') if model.get('backend') in ('unified','dinov3') else None,env={**os.environ,'PYTHONIOENCODING':'utf-8','PYTHONUTF8':'1'})
         def read():
             try:
                 for line in self.process.stdout:
@@ -42,6 +43,7 @@ class Runner:
         try:
             value=self.messages.get(timeout=float(model.get('load_timeout',180)))
             if not value.get('ready'):raise ValueError(value.get('error','模型加载失败'))
+            self.metadata=value.get('model_info',{})
         except Exception:self.close();raise
     def predict(self,image,output):
         if self.process.poll() is not None:raise ValueError('模型进程已退出')
@@ -68,12 +70,26 @@ def render(image_path,map_path,folder,params,score):
     from scipy.ndimage import gaussian_filter,label,find_objects
     if map_path.stat().st_size>64*1024*1024:raise ValueError('模型分割图过大')
     raw=np.load(map_path,allow_pickle=False)
-    if raw.ndim!=2 or not raw.size or raw.size>16000000 or not np.isfinite(raw).all():raise ValueError('模型必须返回有限数值的二维分割分数图')
-    scores=raw.astype('float32')
-    if params['smooth_sigma']:scores=gaussian_filter(scores,params['smooth_sigma'])
+    if raw.ndim not in (2,3) or not raw.size or raw.size>16000000 or not np.isfinite(raw).all():raise ValueError('模型须返回有限数值的二维或多类概率图')
+    if raw.ndim==3 and (raw.shape[0]<2 or raw.shape[0]>256):raise ValueError('多类概率图须为 C×H×W（包含背景）')
+    low,high=float(raw.min()),float(raw.max())
+    if low < -1e-5 or high > 1+1e-5:raise ValueError('保存的分数不在0–1范围，请使用新版统一模型重新预测')
+    scores=np.clip(raw.astype('float32'),0,1)
+    if params['smooth_sigma']:scores=gaussian_filter(scores,(0,params['smooth_sigma'],params['smooth_sigma']) if raw.ndim==3 else params['smooth_sigma'])
     with Image.open(image_path) as image:original=image.convert('RGB')
-    up=np.asarray(Image.fromarray(scores).resize(original.size,Image.Resampling.BILINEAR))
-    mask=up>params['seg_threshold']
+    def resize(plane):return np.clip(np.asarray(Image.fromarray(plane).resize(original.size,Image.Resampling.BILINEAR)),0,1)
+    class_ids=None
+    if raw.ndim==3:
+        if scores.shape[0]*original.width*original.height>64000000:raise ValueError('多类概率图恢复后过大，请减少图片尺寸或类别数')
+        up=np.stack([resize(plane) for plane in scores])
+        sums=up.sum(axis=0)
+        if np.any(sums<=0):raise ValueError('多类概率之和必须大于0')
+        up/=sums
+        class_ids=up.argmax(axis=0)
+        mask=(class_ids>0)&(up.max(axis=0)>=params['seg_threshold'])
+    else:
+        up=resize(scores)
+        mask=up>=params['seg_threshold']
     if params['image_threshold'] is not None and score<params['image_threshold']:mask[:]=False
     labels,count=label(mask);sizes=np.bincount(labels.ravel());keep=sizes>=params['min_area'];keep[0]=False;mask=keep[labels]
     # Bound preview metadata for pathological noisy maps; the full mask is retained.
@@ -89,7 +105,10 @@ def render(image_path,map_path,folder,params,score):
     revision=uuid.uuid4().hex
     overlay_name='overlay-'+revision+'.png';mask_name='mask-'+revision+'.png'
     overlay.save(folder/overlay_name);Image.fromarray(mask.astype('uint8')*255).save(folder/mask_name)
-    return {'image_score':score,'is_anomaly':bool(mask.any()),'defect_pixels':int(mask.sum()),'regions':int(regions),'bboxes':boxes,'bboxes_truncated':regions>2000,'width':original.width,'height':original.height,'params':params,'overlay_file':overlay_name,'mask_file':mask_name}
+    result={'image_score':score,'is_anomaly':bool(mask.any()),'defect_pixels':int(mask.sum()),'regions':int(regions),'bboxes':boxes,'bboxes_truncated':regions>2000,'width':original.width,'height':original.height,'params':params,'overlay_file':overlay_name,'mask_file':mask_name,'normalization':{'method':'model_probability','range':[0,1],'source_min':low,'source_max':high}}
+    if class_ids is not None:
+        result['class_pixels']={str(int(c)):int(((class_ids==c)&mask).sum()) for c in np.unique(class_ids[mask])}
+    return result
 
 class OfflineQueue:
     def __init__(self,data_dir,registry_path=None,runner_path=None):
@@ -109,40 +128,19 @@ class OfflineQueue:
                 self.jobs[value['id']]=value
             except (ValueError,KeyError,OSError,TypeError):continue
         self.thread=threading.Thread(target=self._work,name='offline-inference',daemon=True);self.thread.start()
+    def _registry_content(self):
+        from offline_registry import default_registry
+        return json.loads(self.registry.read_text('utf-8-sig')) if self.registry.is_file() else default_registry()
     def _models(self):
-        if not self.registry.is_file():return []
-        content=json.loads(self.registry.read_text('utf-8-sig'))
-        if not isinstance(content,dict) or not isinstance(content.get('defaults',{}),dict) or not isinstance(content.get('models',[]),list):raise ValueError('模型配置须包含 defaults 对象和 models 数组')
-        defaults=content.get('defaults',{});entries=content.get('models',[])
-        if content.get('checkpoint_dir'):
-            directory=Path(content['checkpoint_dir']).expanduser()
-            if not directory.is_absolute():directory=self.registry.parent/directory
-            if directory.is_dir():
-                for checkpoint in sorted(directory.iterdir()):
-                    if checkpoint.is_file() and checkpoint.suffix.lower() in ('.pt','.pth'):
-                        entries.append({'id':'model-'+uuid.uuid5(uuid.NAMESPACE_URL,str(checkpoint)).hex[:20],'name':checkpoint.stem,'checkpoint':str(checkpoint)})
-        results=[];ids=set()
-        for entry in entries:
-            if not isinstance(entry,dict):raise ValueError('模型条目必须为对象')
-            model={**defaults,**entry};model.setdefault('backend','dinov3');model.setdefault('python',sys.executable)
-            if not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',str(model.get('id',''))) or model['id'] in ids:raise ValueError('本地模型配置包含非法或重复编号')
-            ids.add(model['id']);model.setdefault('name',model['id'])
-            for key in ('project_dir','checkpoint','backbone_weights','python'):
-                if model.get(key):
-                    path=Path(model[key]).expanduser()
-                    if key=='python' and not path.is_absolute():
-                        found=shutil.which(str(path));path=Path(found) if found else self.registry.parent/path
-                    elif not path.is_absolute():path=self.registry.parent/path
-                    model[key]=str(path.absolute() if key=='python' else path.resolve())
-            required=['python','checkpoint']+(['project_dir','backbone_weights'] if model['backend']=='dinov3' else [])
-            missing=[key for key in required if not model.get(key) or not Path(model[key]).exists()]
-            model['available']=not missing and model['backend'] in ('dinov3','torchscript')
-            model['reason']='本机缺少：'+', '.join(missing) if missing else ''
-            results.append(model)
-        return results
+        from offline_registry import discover
+        return discover(self._registry_content(),self.registry)[0]
     def models(self):
-        try:return {'models':[{k:m[k] for k in ('id','name','available','reason')} for m in self._models()],'configured':self.registry.is_file()}
-        except (OSError,ValueError,TypeError) as e:return {'models':[],'configured':False,'error':'本地模型配置读取失败：'+str(e)}
+        from offline_registry import discover
+        try:
+            models,discovery=discover(self._registry_content(),self.registry)
+            return {'models':[{k:m[k] for k in ('id','name','available','reason','backend')} for m in models],
+                    'configured':self.registry.is_file(),'discovery':discovery,'score_range':[0,1]}
+        except (OSError,ValueError,TypeError,KeyError) as e:return {'models':[],'configured':self.registry.is_file(),'error':'本地模型配置读取失败：'+str(e)}
     def _save(self,job):atomic_json(self.root/job['id']/'job.json',job)
     def _owned(self,user,job_id):
         job=self.jobs.get(str(job_id))
@@ -232,6 +230,7 @@ class OfflineQueue:
             if not item or item['status']!='completed':raise ValueError('请先等待该图片预测完成')
             folder=self.root/job_id/item_id
             result=render(folder/'original',folder/'scores.npy',folder,params,item['result']['image_score']);result['inference_ms']=item['result']['inference_ms']
+            if item['result'].get('model_info'):result['model_info']=item['result']['model_info']
             item['result']=result;self._save(job);return self._public(job)['items'][job['items'].index(item)]
     def _register_runner(self,runner):
         with self.lock:self.active_runner=runner;closed=self.closed
@@ -254,6 +253,7 @@ class OfflineQueue:
                     try:
                         score=runner.predict(folder/'original',folder/'scores.npy')
                         result=render(folder/'original',folder/'scores.npy',folder,job['params'],score);result['inference_ms']=round((time.perf_counter()-start)*1000,2)
+                        if runner.metadata:result['model_info']=runner.metadata
                         with self.lock:item.update(status='completed',result=result)
                     except Exception as e:
                         with self.lock:item.update(status='failed',error=str(e))

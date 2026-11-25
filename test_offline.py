@@ -121,9 +121,9 @@ class OfflineQueueTests(unittest.TestCase):
         self.assertEqual(gated['result']['defect_pixels'], 0)
         filtered = self.queue.resegment(OWNER, job['id'], item['id'], {**PARAMS, 'min_area': 5000})
         self.assertEqual(filtered['result']['defect_pixels'], 0)
-        # A threshold above all raw scores must clear the mask without model rerun.
+        # The upper 0–1 threshold above all fixture scores must clear the mask without model rerun.
         changed = self.queue.resegment(OWNER, job['id'], item['id'],
-                                       {**PARAMS, 'seg_threshold': 1.1})
+                                       {**PARAMS, 'seg_threshold': 1.0})
         self.assertEqual(changed['result']['defect_pixels'], 0)
         self.assertFalse(changed['result']['is_anomaly'])
         with Image.open(self.queue.file(OWNER, job['id'], item['id'], 'mask')) as mask:

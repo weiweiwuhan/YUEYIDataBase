@@ -31,9 +31,12 @@ async function main(){
  const params=form=>run('offlineParams('+JSON.stringify(form)+')');
  const base={seg_threshold:'0.06',min_area:'8',alpha:'0.5',smooth_sigma:'1.2',image_threshold:''};
  assert.equal(params(base).image_threshold,null);
- assert.equal(params({...base,seg_threshold:'2.4'}).seg_threshold,2.4,'raw response threshold is not capped as a probability');
+ assert.throws(()=>params({...base,seg_threshold:'1.01'}));
+ assert.equal(params({...base,seg_threshold:'1'}).seg_threshold,1);
+ assert(run('offlineParamFields()').includes('max="1"'));
+ assert(run('offlineParamFields()').includes('0–1'));
  assert.equal(params({...base,seg_threshold:'0',smooth_sigma:'0'}).smooth_sigma,0);
- for(const changes of [{seg_threshold:'-1'},{alpha:'2'},{min_area:'0'},{min_area:'1.5'},{smooth_sigma:'11'},{image_threshold:'NaN'}])assert.throws(()=>params({...base,...changes}));
+ for(const changes of [{seg_threshold:'-1'},{alpha:'2'},{min_area:'0'},{min_area:'1.5'},{smooth_sigma:'11'},{image_threshold:'NaN'},{image_threshold:'1.01'}])assert.throws(()=>params({...base,...changes}));
  assert(run('offlineParamFields({seg_threshold:0})').includes('value="0"'));
  run("offlineUI.files=[];offlineSelectFiles(Array.from({length:17},(_,i)=>({name:'sample-'+i+'.png',size:32*1024*1024})))");
  assert.equal(run('offlineUI.files.length'),0);
@@ -45,6 +48,6 @@ async function main(){
  assert.equal(requests.length,before,'polling must stop after navigating away');
  run("page='offline';document.hidden=true");await run('offlinePoll()');
  assert.equal(requests.length,before,'polling must stop in hidden tabs');
- console.log('PASS: offline navigation/guest view, missing models, safe raw thresholds, batch limits, filename escaping, polling lifecycle');
+ console.log('PASS: offline navigation/guest view, missing models, 0–1 thresholds, batch limits, filename escaping, polling lifecycle');
 }
 main().catch(error=>{console.error(error);process.exitCode=1});

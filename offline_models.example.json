@@ -1,13 +1,12 @@
 {
+  "format_version": 2,
   "defaults": {
-    "backend": "dinov3",
+    "backend": "unified",
     "python": "C:/ProgramData/anaconda3/python.exe",
     "project_dir": "F:/Fighting!!!!!!!!!!/MyDinoFiuntune",
-    "backbone_weights": "F:/Fighting!!!!!!!!!!/UniADet-main/dinov3/model.safetensors",
-    "device": "auto",
-    "input_size": 512,
-    "extract_layers": [4, 12, 16, 20]
+    "device": "auto"
   },
-  "checkpoint_dir": "F:/Fighting!!!!!!!!!!/MyDinoFiuntune/checkpoints",
+  "checkpoint_dir": "F:/Fighting!!!!!!!!!!/MyDinoFiuntune/checkpoints/anomaly",
+  "recursive": true,
   "models": []
 }

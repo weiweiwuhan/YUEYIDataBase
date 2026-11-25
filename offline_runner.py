@@ -1,4 +1,4 @@
-"""Isolated local inference adapter for the supplied DINOv3 segmentation script.
+"""Isolated local inference adapter for unified and legacy local checkpoints.
 
 Only a server-side administrator model manifest selects code/weights. This module
 never accepts a browser-supplied command, imports no model until executed, and
@@ -53,6 +53,14 @@ class LocalPredictor:
             raise RuntimeError('模型 Python 环境缺少依赖；请在该环境安装 requirements-offline.txt 和本地模型工程依赖') from exc
         self.np, self.torch, self.Image = np, torch, Image
         self.device = _device(torch, spec.get('device', 'auto'))
+        self.backend = spec.get('backend', 'unified')
+        self.model_info = {'backend': self.backend, 'score_range': [0, 1]}
+        checkpoint = _existing_path(spec.get('checkpoint'), '训练检查点 checkpoint')
+        if spec.get('memory_bank'):
+            raise ValueError('当前适配器未启用 memory bank 融合；请勿配置 memory_bank')
+        if self.backend == 'unified':
+            self._load_unified(spec, checkpoint)
+            return
         size = spec.get('input_size', 512)
         if isinstance(size, bool) or not isinstance(size, int) or not 32 <= size <= 4096:
             raise ValueError('input_size 必须为 32–4096 的整数，并与训练配置一致')
@@ -61,10 +69,7 @@ class LocalPredictor:
             transforms.ToTensor(),
             transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
         ])
-        backend = spec.get('backend', 'dinov3')
-        checkpoint = _existing_path(spec.get('checkpoint'), '训练检查点 checkpoint')
-        if spec.get('memory_bank'):
-            raise ValueError('当前适配器未启用 memory bank 融合；参考脚本默认 use_memory=False。需确认本地 MemoryBank 的安全加载接口后另行接入')
+        backend = self.backend
         if backend == 'torchscript':
             self.model = torch.jit.load(str(checkpoint), map_location=self.device).eval()
             self.extractor = None
@@ -119,7 +124,49 @@ class LocalPredictor:
             self.model.load_state_dict(state, strict=True)
             self.model.eval()
         else:
-            raise ValueError('backend 仅支持 dinov3 或 torchscript')
+            raise ValueError('backend 仅支持 unified、dinov3 或 torchscript')
+
+    def _load_unified(self, spec, checkpoint):
+        root = _existing_path(spec.get('project_dir'), '本地模型工程 project_dir', directory=True)
+        missing = [name for name in ('models/task_model.py', 'data/dataset.py') if not (root / name).is_file()]
+        if missing:
+            raise ValueError('请更新完整的 MyDinoFiuntune 工程；缺少：' + '、'.join(missing))
+        sys.path.insert(0, str(root))
+        importlib.invalidate_caches()
+        task = importlib.import_module('models.task_model')
+        dataset = importlib.import_module('data.dataset')
+        for module in (task, dataset):
+            if not Path(module.__file__).resolve().is_relative_to(root):
+                raise ValueError('模型模块来自其他工程，请重新启动独立预测进程')
+        try:
+            self.model, metadata = task.load_checkpoint(str(checkpoint), device=self.device)
+        except Exception as exc:
+            raise ValueError('统一检查点加载失败：需要保留 format_version=2、model_config、model_state、image_size；不要将新版模型转换为裸 state_dict。请确认工程与检查点版本一致。原始原因：' + str(exc)[:1800]) from exc
+        if not isinstance(metadata, dict) or metadata.get('format_version') != 2:
+            raise ValueError('当前入口需要 format_version=2 的统一 .pt 检查点')
+        if 'image_size' not in metadata:
+            raise ValueError('统一检查点缺少 image_size，无法确定训练时的输入尺寸')
+        size = metadata['image_size']
+        if size is not None:
+            if type(size) is int:
+                size = (size, size)
+            if (not isinstance(size, (list, tuple)) or len(size) != 2
+                    or any(type(x) is not int or not 1 <= x <= 16384 for x in size)
+                    or size[0] * size[1] > 20000000):
+                raise ValueError('检查点 image_size 必须为合法的 [高,宽] 或 null（原尺寸）')
+            size = tuple(size)
+        channels = getattr(self.model, 'input_channels', None)
+        if channels not in (1, 3):
+            raise ValueError('统一模型 input_channels 必须为1或3')
+        self.input_size = size
+        self.transform = dataset.get_image_transform(size, input_channels=channels)
+        self.model.eval()
+        config = getattr(self.model, 'config', None)
+        self.model_info.update(format_version=2, mode=getattr(config, 'mode', ''),
+                               input_size=list(size) if size is not None else None,
+                               input_channels=channels,
+                               num_classes=getattr(config, 'num_classes', 2),
+                               normalization='model_probability')
 
     def predict(self, input_path, output_path):
         source = _existing_path(input_path, '输入图片')
@@ -128,10 +175,22 @@ class LocalPredictor:
             raise ValueError('输出文件必须为 .npy 原始分割分数')
         with self.Image.open(source) as image:
             image.seek(0)
+            if self.backend == 'unified' and self.input_size is None and (image.height % 32 or image.width % 32):
+                raise ValueError('该检查点使用原尺寸预测，图片高宽须分别为32的倍数；请按本地 infer.py 的要求准备图片，不会自动缩成512')
             tensor = self.transform(image.convert('RGB')).unsqueeze(0).to(self.device)
         with self.torch.inference_mode():
-            features = self.extractor(tensor) if self.extractor is not None else tensor
-            result = self.model(features)
+            if self.backend == 'unified':
+                prediction = self.model(tensor)
+                if not isinstance(prediction, (tuple, list)) or len(prediction) != 2:
+                    raise ValueError('统一模型须返回 (image_score, probability_maps)')
+                image_score, scores = prediction
+                if getattr(scores, 'ndim', 0) != 4 or scores.shape[0] != 1:
+                    raise ValueError('统一概率图须为 [1,C,H,W]')
+                scores = scores[0]
+                result = {'seg_map': scores, 'image_score': image_score}
+            else:
+                features = self.extractor(tensor) if self.extractor is not None else tensor
+                result = self.model(features)
         if not isinstance(result, dict) or 'seg_map' not in result:
             raise ValueError('模型输出须为包含 seg_map 的字典')
         scores = result['seg_map']
@@ -140,10 +199,13 @@ class LocalPredictor:
         scores = self.np.asarray(scores, dtype=self.np.float32)
         while scores.ndim > 2 and scores.shape[0] == 1:
             scores = scores[0]
-        if scores.ndim != 2 or not scores.size or max(scores.shape) > 16384 or scores.size > 16_777_216:
-            raise ValueError('seg_map 须为 H×W 或前导维度均为1的单通道分割图')
+        if scores.ndim not in (2, 3) or not scores.size or max(scores.shape) > 16384 or scores.size > 16_000_000 or (scores.ndim == 3 and scores.shape[0] > 256):
+            raise ValueError('概率图须为 H×W 或 C×H×W，且不超过1600万个数值')
         if not self.np.isfinite(scores).all():
             raise ValueError('模型分割分数包含 NaN/Inf，不能生成有效检测结果')
+        if float(scores.min()) < -1e-5 or float(scores.max()) > 1 + 1e-5:
+            raise ValueError('模型输出不在0–1范围，请确认返回激活后的概率图；不会用逐图min/max改变分数含义')
+        scores = self.np.clip(scores, 0, 1)
         image_score = result.get('image_score')
         if image_score is None:
             image_score = float(scores.max())
@@ -155,12 +217,15 @@ class LocalPredictor:
             image_score = float(image_score)
         if not math.isfinite(image_score):
             raise ValueError('image_score 包含 NaN/Inf')
+        if not -1e-5 <= image_score <= 1 + 1e-5:
+            raise ValueError('image_score须为0–1模型分数')
+        image_score = min(1.0, max(0.0, image_score))
         output.parent.mkdir(parents=True, exist_ok=True)
         temporary = output.with_name(output.name + '.tmp')
         with temporary.open('wb') as handle:
             self.np.save(handle, scores, allow_pickle=False)
         temporary.replace(output)
-        return {'ok': True, 'image_score': image_score, 'height': int(scores.shape[0]), 'width': int(scores.shape[1])}
+        return {'ok': True, 'image_score': image_score, 'height': int(scores.shape[-2]), 'width': int(scores.shape[-1])}
 
 
 def _emit(value):
@@ -182,7 +247,7 @@ def main(argv=None):
         _emit({'ready': False, 'ok': False, 'error': str(exc)})
         return 1
     if args.serve:
-        _emit({'ready': True})
+        _emit({'ready': True, 'model_info': predictor.model_info})
         for line in sys.stdin:
             if not line.strip():
                 continue

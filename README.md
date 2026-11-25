@@ -2,7 +2,7 @@
 
 > 以项目串联检测资料，让每一张图片有出处、每一个缺陷可追溯、每一次售后经验可复用。
 
-当前应用版本：**1.11.0**，版本及代码更新时间以 [version.json](version.json) 和网页左下角显示为准。
+当前应用版本：**1.12.0**，版本及代码更新时间以 [version.json](version.json) 和网页左下角显示为准。
 
 本项目将项目、产品、检测工程、图片、缺陷、技术协议和售后经验关联管理，支持公司内网共享、模型测试记录、本地模型离线分割，以及基于知识库的 AI 问答。
 
@@ -36,6 +36,16 @@
 
 “使用指南”已替换为“AI智能问答助手”；MySQL SQL 栏目不再显示在导航中，但 MySQL 运行支持保留，SQL 导出接口仅管理员可用。
 
+## 1.12.0：最新本地模型离线预测
+
+左侧“大模型离线测试”适配最新 MyDinoFiuntune 工程的 `format_version=2` 统一 `.pt` 检查点。自动递归搜索 `checkpoints/anomaly`，下拉框按相对子目录区分同名模型；点击“刷新模型列表”即可发现新增文件。
+
+加载工程自己的 `models.task_model.load_checkpoint` 和 `data.dataset.get_image_transform`，按检查点记录的尺寸、灰度/RGB 预处理和模型结构预测。新版完整检查点包含基础网络权重，**不再额外要求旧 DINOv3 safetensors，也不要转换成裸 state_dict**。
+
+分割和图像阈值统一限制在 **0～1**，默认分割阈值 **0.5**、平滑强度 **0**；保留模型已经激活的概率尺度，不做逐图 min/max 拉伸。支持二分类和包含背景的多类概率图，结果仍叠加在原图，可调整阈值重新生成掩码。
+
+原默认配置会在读取时自动适配新目录，保留原文件和显式登记的旧模型；自定义目录请自行调整。使用最新完整模型工程，更新网页全部代码后重启并按 **Ctrl+F5**，左下角应显示 **1.12.0**。配置与旧模型兼容说明见 [OFFLINE_TESTING.md](OFFLINE_TESTING.md)。
+
 ## 1.11.0：管理员私人知识备份
 
 管理员登录后，左侧显示“私人知识备份”；访客及录入员不显示此入口。**所有管理员账户可访问该区域**，不是按管理员个人再分权限。列表、笔记、文件、缩略图、预览、上传及完整备份下载均由服务端逐次校验管理员身份，直接访问链接也不能绕过。
@@ -51,7 +61,7 @@
 
 这里提供的是应用账户权限隔离，文件未做静态加密。有服务器磁盘或完整备份读取权限的人仍能读取原文件，私人 ZIP 也包含敏感内容，应保存在你控制的位置。仓库只提交功能代码，不提交上传的私人资料。
 
-更新全部代码后重启服务并按 **Ctrl+F5** 刷新，左下角应显示 **1.11.0**。
+更新全部代码后重启服务并按 **Ctrl+F5** 刷新，左下角当前应显示 **1.12.0**。
 
 ## 1.10.0：售前方案记录
 
@@ -395,9 +405,9 @@ graph LR
 
 该模块实际调用**服务器本地模型**，与人工“软件测试记录”和 DeepSeek 文本问答相互独立。
 
-1. 在运行服务的电脑准备完整模型工程、基础权重及训练检查点。
+1. 在运行服务的电脑更新完整 MyDinoFiuntune 工程，准备其统一格式训练检查点。
 2. 模型 Python 环境安装匹配的 PyTorch/torchvision 和工程依赖，可参考 [requirements-offline.txt](requirements-offline.txt)。
-3. 使用相同 `AOI_DATA` 执行 `python configure_offline.py`，生成本地模型配置。
+3. 默认路径可直接使用；需要自定义时，使用相同 `AOI_DATA` 执行 `python configure_offline.py` 生成本地模型配置。已有配置默认不覆盖。
 4. 网页进入“大模型离线测试”，选择模型、上传图片并查看队列和逐图结果。
 
 默认配置对应当前工程路径：
@@ -406,22 +416,16 @@ graph LR
 | --- | --- |
 | 模型 Python | `C:/ProgramData/anaconda3/python.exe` |
 | 模型工程 | `F:/Fighting!!!!!!!!!!/MyDinoFiuntune` |
-| 检查点目录 | `F:/Fighting!!!!!!!!!!/MyDinoFiuntune/checkpoints` |
-| DINOv3 基础权重 | `F:/Fighting!!!!!!!!!!/UniADet-main/dinov3/model.safetensors` |
+| 检查点目录 | `F:/Fighting!!!!!!!!!!/MyDinoFiuntune/checkpoints/anomaly`（递归搜索 `.pt`） |
+| 检查点格式 | `format_version=2`，包含 `model_config`、`model_state`、`image_size` |
 
 路径与实际电脑不一致时，通过配置命令参数修改。模型在服务器执行，云端无法直接读取你本机 F 盘。
 
-支持每批最多 **200 张/512 MB**，单张最多 **32 MB/2000 万像素**。按批次排队，同批模型只加载一次，每完成一张即可查看该张结果。可以调整原始分割阈值、最小瑕疵面积、平滑强度、透明度及可选图像门限，在原图上显示瑕疵；结果生成后可直接重分割，无需重跑模型。
+支持每批最多 **200 张/512 MB**，单张最多 **32 MB/2000 万像素**。按批次排队，同批模型只加载一次，每完成一张即可查看该张结果。可以调整 0～1 分割阈值、最小瑕疵面积、平滑强度、透明度及可选图像门限，在原图上显示瑕疵；结果生成后可直接重分割，无需重跑模型。多分类先按包含背景的概率取最大类别，再应用阈值。
 
-检查点安全加载失败时，使用 [convert_checkpoint.py](convert_checkpoint.py) 生成新的纯权重文件：
+新模型安全加载失败时，请核对模型工程版本、PyTorch 环境和完整检查点，保留模型配置与预处理元数据。旧 `dinov3` 模型可用显式配置继续登记；[convert_checkpoint.py](convert_checkpoint.py) 只适用于旧工程权重，不能用于本次统一模型。
 
-```bat
-"C:\ProgramData\anaconda3\python.exe" convert_checkpoint.py "F:\Fighting!!!!!!!!!!\MyDinoFiuntune\checkpoints\uniadet_best_yashang.pt"
-```
-
-如果仍失败，**仅对你自己训练或完全可信的文件**添加 `--trust-source`。该选项只用于本机转换，不用于网页加载；转换结果为 `.safe.pt`，不覆盖源文件，网页需改选新模型并重新提交任务。
-
-队列、接口及后处理已用测试专用进程验证；真实权重加载、检测精度和设备速度需要在实际模型环境验证。当前 MemoryBank 融合未接入。完整说明见 [OFFLINE_TESTING.md](OFFLINE_TESTING.md)。
+已用最新模型代码和小型随机权重检查点验证 CPU 适配结果与工程自身输出一致；你的实际 Windows 权重、精度和设备速度仍需本机验证。当前 MemoryBank 融合未接入。完整说明见 [OFFLINE_TESTING.md](OFFLINE_TESTING.md)。
 
 ## 数据位置、备份与升级
 
@@ -503,7 +507,7 @@ GitHub Actions 会运行回归、Office 首页转换、生成契约一致性和�
 | `static/app.js` / `static/style.css` | 主页面与已合并的前端资源 |
 | `static/offline.js` / `static/assistant.js` / `static/technical.js` / `static/knowledge.js` / `static/resources.js` | 离线测试、问答、技术经验、知识关联及统一资料检索源码 |
 | `build_frontend.py` | 合并离线、问答脚本与样式 |
-| `offline_queue.py` / `offline_runner.py` | 本地推理队列与模型适配器 |
+| `offline_queue.py` / `offline_runner.py` / `offline_registry.py` | 本地推理队列、模型适配器与可信检查点发现 |
 | `rag_assistant.py` / `assistant_service.py` | 检索生成、历史、知识源同步 |
 | `experience_import.py` | 售后和问答 CSV/XLSX 校验、查重 |
 | `catalog_import.py` / `CATALOG_IMPORT.md` | 外部紧固件目录审核、差异预览及幂等导入 / 使用说明 |

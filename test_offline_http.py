@@ -156,7 +156,7 @@ class OfflineHTTPTests(unittest.TestCase):
                         self.assertEqual(overlay.size, (64, 48))
                     changed = api(owner, '/api/offline/resegment', {
                         'job_id': job['id'], 'item_id': item['id'],
-                        'params': {**PARAMS, 'seg_threshold': 1.1},
+                        'params': {**PARAMS, 'seg_threshold': 1.0},
                     })['item']
                     self.assertFalse(changed['result']['is_anomaly'])
                     self.assertEqual(changed['result']['defect_pixels'], 0)
